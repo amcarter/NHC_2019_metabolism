@@ -1,0 +1,80 @@
+---
+title: "NHC watershed delineation to points"
+author: "Alice Carter"
+date: "3/31/2020"
+output: html_document
+---
+
+This file is modified from code by Nick Bruns
+
+Consult [these docs from this Download link](ftp://ftp.horizon-systems.com/NHDplus/NHDPlusV21/Documentation/NHDPlusV2_User_Guide.pdf) to understand NHD column values, their units etc.
+This is long, so just control-f on the information you need.
+
+[This map has all USGS gages](https://maps.waterdata.usgs.gov/mapper/index.html) 
+
+[This tool is nice for visualizing HUCs](http://waterqualityexplorer.rc.duke.edu:3838/explorer/) 
+
+
+
+```{r setup, include=FALSE}
+#install.packages("nhdplusTools") #uncomment and run!
+library(nhdplusTools)
+library(tidyverse)
+library(sf)
+library(tmap)
+tmap_mode("view") #makes map plots interactive
+```
+
+---
+
+
+```{r sites}
+# USGS gage ID at NHC blands
+NHC_gage_id <- "02097314"
+NHC_sites <- read.csv("../data/siteData/NHCsite_coordinates.csv", header=T, stringsAsFactors = F)
+
+# convert sites to sf object
+NHC_sites_sf <- NHC_sites[,2:4] %>% 
+  st_as_sf(coords=c("longitude","latitude"),remove=F, crs=4326)
+
+```
+
+```{r code_demonstration}
+#First, we'll check how many machines work. So first, run this whole block, then we'll work through line by line.
+  NHC_id_string<- paste0("USGS-",NHC_gage_id) #just add prefix to string
+  NHC_site <- list(featureSource = "nwissite",  #prepping below web quirie below, this just indicates the kind of data we have
+               featureID = NHC_id_string) 
+  NHC_line <- navigate_nldi(NHC_site, "UT", "") #returns all upstream flowlines
+  NHC_gages_sf <- navigate_nldi(NHC_site, "UT", "nwissite") #returns all upstream USGS gages
+  
+  #now map flowlines and gages
+  tm_shape(NHC_line) + tm_lines() +
+    tm_shape(NHC_sites_sf)+ tm_dots(col="purple")+  
+    tm_shape(NHC_gages_sf) +tm_dots(col="red")
+```
+```{r download_NHD_info}
+#Flowlines above are just the ID's . Download everything!
+save_file_name <- "../data/siteData/NHC_NHD_subset.gpkg" #gkpg is an open source geospatial format
+subset_nhdplus(NHC_line$nhdplus_comid, 
+                       save_file_name, 
+                       "download")
+NHC_nhd <- st_read(save_file_name)
+glimpse(NHC_nhd)
+# NHC_nhd %>%    
+#   mutate(streamorde=as.factor(streamorde)) %>% 
+#   tm_shape() + tm_lines(col = "streamorde") +
+#   tm_shape(NHC_site_sf) +tm_dots(col="red") 
+```
+
+
+
+```{r wartershed areas}
+# add gage stations to sitelist
+gages <- as.data.frame(cbind(NHC_gages_sf[,c(4,3)], st_coordinates(NHC_gages_sf)))
+gage.sites <-data.frame(sitename=gages$name, sitecode=gages$identifier, 
+                            latitude=gages$Y, longitude=gages$X, 
+                            CRS="WGS84",notes = "")
+sites <- rbind(NHC_sites, gage.sites)
+
+write.csv(sites, file = "../data/siteData/NHCsite_coordinates.csv", row.names = F)
+```

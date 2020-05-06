@@ -1,0 +1,56 @@
+---
+title: "Watershed Delineation"
+author: "Mark Hagemannr"
+date: "3/31/2020"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+```{r}
+# update and load packages
+# library(devtools)
+# install_github('markwh/streamstats')
+library(streamstats)
+library(dplyr)
+```
+
+Delineate watersheds to each sample point and USGS gage in NHC watershed. 
+Calculate watershed area and percent ISC.
+
+```{r}
+sites <- read.csv("../data/siteData/NHCsite_coordinates.csv", header=T, stringsAsFactors = F)
+sites$ws_area.km2 <- NA
+sites$isc.percent <- NA
+
+```
+
+Function to delineate watershed and calculate area
+
+
+(if timeout is reached before a result is returned, you can specify it using `setTimeout([number of seconds])`)
+
+Here, `crs` is the coordinate reference system number (ESPSG spatial reference code). 
+
+To see what it returned, the `leafletWatershed` function gives a simple interactive map.
+
+```{r compute_ws_areas}
+setTimeout(600)
+for(i in 1:nrow(sites)){
+  dat <- sites[i,]
+  WS <- delineateWatershed(xlocation = dat$longitude, ylocation = dat$latitude, crs = 4326, 
+                           includeparameters = "true", includeflowtypes = "true" )
+  WSchars <- computeChars(workspaceID = WS$workspaceID, rcode="NC")
+  leafletWatershed(WS)
+  params <- WSchars$parameters
+  wsArea.miles2 <- params[params$code=="DRNAREA", 6]
+  wsArea.km2 <- wsArea.miles2*(1.60934^2)  
+  isc <- params[params$code=="LC11IMP",6]
+  sites$ws_area.km2[i]<- wsArea.km2
+  sites$isc.percent[i]<- isc
+}
+
+write.csv(sites, file = "../data/siteData/NHCsite_watersheds.csv", row.names=F)
+```
+
