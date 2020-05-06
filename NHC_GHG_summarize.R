@@ -10,8 +10,18 @@ library(dplyr)
 
 dat <- read_csv("../field data/2019/NHC gas data/NHC_2019-2020_processed_GHGdata.csv")
 
+# set values below detection limits to 1/2 mdl
+dat$CH4.ugL[dat$CH4.ugL<0]<- 0
+dat$CO2.ugL[dat$CO2.ugL<0]<- 0
+dat$N2O.ugL[dat$N2O.ugL<0]<- 0
+
 dat.mean <- dat %>% group_by(Site, Date) %>%
-  summarise(CH4.ugL = mean(CH4.ugL, na.rm=T),
-            CO2.ugL = mean(CO2.ugL, na.rm=T), 
-            N2O.ugL = mean(N2O.ugL, na.rm=T), 
+  summarise(CH4.ugL.mean = mean(CH4.ugL, na.rm=T),
+            CH4.ugL.sd = sd(CH4.ugL, na.rm=T),
+            CO2.ugL.mean = mean(CO2.ugL, na.rm=T), 
+            CO2.ugL.sd = sd(CO2.ugL, na.rm=T), 
+            N2O.ugL.mean = mean(N2O.ugL, na.rm=T), 
+            N2O.ugL.sd = sd(N2O.ugL, na.rm=T)
             )
+
+ left_join(dat[,-c(7,8,9)], by=c("Site", "Date"))

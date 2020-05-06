@@ -4,12 +4,19 @@
 # AMCarter
 # 2020.03.31
 
-library(tidyverse)
+# library(devtools)
+# install_github('streampulse/StreamPULSE', dependencies=TRUE)
 library(StreamPULSE)
+library(tidyverse)
+library(lubridate)
+library(zoo)
 
-ZQdat <- read_csv(file="../data/siteData/NC_streampulseZQ_data.csv")
-wsAreas <- read_csv(file="../data/siteData/NHCsite_watersheds.csv")
-sites <- read_csv(file="../data/siteData/NHCsite_metadata.csv")
+setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism")
+
+ZQdat <- read_csv(file="data/siteData/NC_streampulseZQ_data.csv")
+wsAreas <- read_csv(file="data/siteData/NHCsite_watersheds.csv")
+sites <- read_csv(file="data/siteData/NHCsite_metadata.csv")
+source("code/helpers.R")
 
 #Add WS area to sites list
 sites <- left_join(sites, wsAreas[,c(2,7)], by = "sitecode")
@@ -22,38 +29,40 @@ dateRange <- c(min(sites$startdate.UTC), max(sites$enddate.UTC))
 DateTime_UTC <- seq(dateRange[1], dateRange[2], by = 15*60)
 
 
-# read in data from NHC and UNHC from database based on this daterange
+# read in data from NHC and UNHC to get discharge
 
-vars <- c("AirPres_kPa","WaterPres_kPa", "WaterTemp_C")
-NHC <- request_data("NC_NHC", startdate=dateRange[1], enddate=dateRange[2],variables=vars)$data
+NHC <- read.csv("data/metabolism/raw/NHC_2020-03-20_raw.csv", stringsAsFactors = FALSE, header=TRUE)
+NHC$value[NHC$flagtype=="Bad Data"|NHC$flagtype=="Questionable"]<- NA
 NHC <- NHC %>% select(DateTime_UTC, value, variable)%>%
-  spread(key=variable, value=value) %>%
-  rename(pressure_kPa=WaterPres_kPa, temp = WaterTemp_C)
+  pivot_wider(names_from=variable, values_from=value) %>%
+  select(DateTime_UTC, pressure_kPa=WaterPres_kPa, temp = WaterTemp_C, AirPres_kPa)
 
 # remove NHC out of water pressure values (all below 103 from looking at graph)
 NHC$pressure_kPa[which(NHC$pressure_kPa<103)]<-NA
 
+UNHC <- read.csv("data/metabolism/raw/UNHC_2020-03-20_raw.csv", stringsAsFactors = FALSE, header=TRUE)
+UNHC$value[UNHC$flagtype=="Bad Data"|UNHC$flagtype=="Questionable"]<- NA
+UNHC <- UNHC %>% select(DateTime_UTC, value, variable)%>%
+  pivot_wider(names_from=variable, values_from=value) %>%
+  select(DateTime_UTC, UNHC.pressure_kPa=WaterPres_kPa, UNHC.temp = WaterTemp_C)
 
+UNHC <- left_join(NHC, UNHC, by="DateTime_UTC")
 
-UNHC <- request_data("NC_UNHC", startdate=dateRange[1], enddate=dateRange[2],variables=vars)$data
-UNHC$value[which(UNHC$flagtype=="Bad Data")]<- NA
-UNHC <- select(UNHC, DateTime_UTC, variable, value)%>%
-  spread(variable, value) %>%
-  rename(pressure_kPa=WaterPres_kPa, temp = WaterTemp_C)
-UNHC<-left_join(UNHC, NHC[,1:2])
+UNHC$DateTime_UTC<- ymd_hms(UNHC$DateTime_UTC)
 
 # Calculate depth from water pressure and add sensor offset
 # Depth = pressure_Pa = kg/ms2/(density_kg/m3*gravity_m/s2)
 # density is temperature dependent, for now I am assuming it's just 998 kg/m3
-sensor_offsets <- read_csv("../data/siteData/sensor_offsets.csv")
+sensor_offsets <- read_csv("data/siteData/sensor_offsets.csv")
 
-NHC$pressure_Pa <- (NHC$pressure_kPa-NHC$AirPres_kPa)*1000
-NHC$level_m <- sensor_offsets[sensor_offsets$site=="NHC",]$offset_cm/100 +
-  NHC$pressure_Pa/(998*9.8)
+UNHC$pressure_Pa <- (UNHC$pressure_kPa-UNHC$AirPres_kPa)*1000
+UNHC$U.pressure_Pa<- (UNHC$UNHC.pressure_kPa-UNHC$AirPres_kPa)*1000
+UNHC$level_m <- sensor_offsets[sensor_offsets$site=="NHC",]$offset_cm/100 +
+  UNHC$pressure_Pa/(998*9.8)
 
-UNHC$level_m <- sensor_offsets[sensor_offsets$site=="UNHC",]$offset_cm/100 +
-  (UNHC$pressure_kPa-UNHC$AirPres_kPa)*1000/(998*9.8)
-UNHC$level_m[UNHC$level_m<0.2]<-NA
+UNHC$U.level_m <- sensor_offsets[sensor_offsets$site=="UNHC",]$offset_cm/100 +
+  UNHC$U.pressure_Pa/(998*9.8)
+UNHC$U.level_m[UNHC$U.level_m<0.24]<-NA
 
 
 # Calculate discharge from rating curves
@@ -72,18 +81,21 @@ b.UNHC <- summary(m)$coefficients[2]#Summary of the regression statistics
 plot(ZQdat$discharge_cms[ZQdat$site=="UNHC"], ZQdat$level_m[ZQdat$site=="UNHC"], xlab="Q", ylab="z", main="UNHC")
 lines(seq(.1,3, by=.1), a.UNHC*seq(.1,3, by=.1)^b.UNHC)
 
-NHC$NHC_Q_cms <- (NHC$level_m/a.NHC)^(1/b.NHC)
-UNHC$UNHC_Q_cms <- (UNHC$level_m/a.UNHC)^(1/b.UNHC)
+UNHC$NHC_Q_cms <- (UNHC$level_m/a.NHC)^(1/b.NHC)
+UNHC$UNHC_Q_cms <- (UNHC$U.level_m/a.UNHC)^(1/b.UNHC)
 
 
-Qdat <- NHC %>% select(DateTime_UTC, AirPres_kPa, NHC_Q_cms)%>% 
-  full_join(select(UNHC, DateTime_UTC, UNHC_Q_cms))
+Qdat <- UNHC %>% select(DateTime_UTC, NHC_Q_cms, UNHC_Q_cms)
+
+Qdat$NHC_Q_cms <- na.approx(Qdat$NHC_Q_cms, na.rm=FALSE, maxgap=12)
+Qdat$UNHC_Q_cms <- na.approx(Qdat$UNHC_Q_cms, na.rm=FALSE, maxgap=12)
 
 plot(Qdat$UNHC_Q_cms, Qdat$NHC_Q_cms, xlab = "UNHC Q", ylab = "NHC Q", log = "xy")
 mQ <- glm(log(NHC_Q_cms)~log(UNHC_Q_cms), data=Qdat)
 a=summary(mQ)$coefficients[1,1]
 b=summary(mQ)$coefficients[2,1]
 abline(a,b , col = "red")
+
 
 ######################################################
 # fill missing NHC Q based on UNHC. 
@@ -93,11 +105,22 @@ Qdat$predNHC_Q <- exp(a+b*log(Qdat$UNHC_Q_cms))
 Qdat$predUNHC_Q <- exp((log(Qdat$NHC_Q_cms)-a)/b)
 
 Qdat$notes <- as.character(NA)
-Qdat$notes[is.na(Qdat$NHC_Q_cms)]<- "modeled NHC Q"
-Qdat$notes[is.na(Qdat$UNHC_Q_cms)]<- "modeled UNHC Q"
+Qdat$notes[is.na(Qdat$NHC_Q_cms)&!is.na(Qdat$predNHC_Q)]<- "modeled NHC Q"
+Qdat$notes[is.na(Qdat$UNHC_Q_cms)&!is.na(Qdat$predUNHC_Q)]<- "modeled UNHC Q"
 
 Qdat$NHC_Q_cms[is.na(Qdat$NHC_Q_cms)] <- Qdat$predNHC_Q[is.na(Qdat$NHC_Q_cms)]
 Qdat$UNHC_Q_cms[is.na(Qdat$UNHC_Q_cms)] <- Qdat$predUNHC_Q[is.na(Qdat$UNHC_Q_cms)]
+
+plot(Qdat$DateTime_UTC, Qdat$NHC_Q_cms, log="y", main = "NHC")
+points(Qdat$DateTime_UTC[Qdat$notes=="modeled NHC Q"], Qdat$NHC_Q_cms[Qdat$notes=="modeled NHC Q"], col = "red")
+
+plot(Qdat$DateTime_UTC, Qdat$UNHC_Q_cms, log="y", main = "UNHC")
+points(Qdat$DateTime_UTC[Qdat$notes=="modeled UNHC Q"], Qdat$UNHC_Q_cms[Qdat$notes=="modeled UNHC Q"], col = "red")
+
+# snap NHC interpolated points to their neighbors
+
+NHC_gaps <- rle_custom(is.na(Qdat$NHC_Q_cms))
+UNHC_gaps <- rle_custom(is.na(Qdat$UNHC_Q_cms))
 
 # Add columns for Q for NHC sites
 newQdat <- data.frame(matrix(NA, nrow=nrow(Qdat), ncol = (1+nrow(sites))))

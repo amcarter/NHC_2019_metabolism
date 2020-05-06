@@ -13,41 +13,35 @@
 
 #library(devtools)
 #install_github('streampulse/StreamPULSE', dependencies=TRUE)
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/Projects/NHC Metabolism 2019-2020")
+setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism")
 
 # Load packages.
 library(StreamPULSE)
-library(streamMetabolizer)
-library(tidyr)
 library(lubridate)
 
 
-
-sites <- read.csv("data/siteData/NHCsite_coordinates.csv", header=T, stringsAsFactors = F)
-sites <- sites[sites$type!="USGS", ]
-sites$siteID <-  paste("NC", sites$sitecode, sep="_")
-sites$startdate.UTC <- as.POSIXct(NA)
-sites$enddate.UTC <- as.POSIXct(NA)
+sites <- read.csv("data/siteData/NHCsite_metadata.csv", header=T, stringsAsFactors = F)
 
 # # find date range of available data for each site
 # for(i in 1:nrow(sites)){
-#   tmp <- query_available_data("NC",sites[i,]$sitecode)
-#   sites[i,9:10] <- tmp$datebounds
-# }
-# sites[,9:10]<- with_tz(sites[,9:10], tz="UTC")
-# write.csv(sites, file = "siteData/NHCsite_metadata.csv", row.names = F)
+#    tmp <- query_available_data("NC",sites[i,]$sitecode)
+#    sites[i,9:10] <- tmp$datebounds
+#  }
+#  sites[,9:10]<- with_tz(sites[,9:10], tz="UTC")
+#  write.csv(sites, file = "siteData/NHCsite_metadata.csv", row.names = F)
 
-# Download data from streampulse for synoptic sampling sites.
-synoptic_sites <- sites[sites$type=="synoptic",]
-
+# Download data from streampulse for sampling sites.
+dateRange <- c(min(sites[sites$type=="synoptic"&sites$sitecode!="MC751",]$startdate.UTC), 
+               max(sites[sites$type=="synoptic"&sites$sitecode!="MC751",]$enddate.UTC))
+sites[sites$type=="core",]$startdate.UTC <- dateRange[1]
+sites[sites$type=="core",]$enddate.UTC <- dateRange[2]
+sites$startdate.UTC <- ymd_hms(sites$startdate.UTC)
+sites$enddate.UTC<- ymd_hms(sites$enddate.UTC)
 # List of all the variables at site:
-for(i in 1:nrow(synoptic_sites)){
-  vars <- as.character(unlist(query_available_data("NC",synoptic_sites[i,]$sitecode)$variables))
-  dat <- request_data(synoptic_sites[i,]$siteID, variables=vars)
-  write.csv(dat$data, file = paste0("data/metabolism/raw/csv/",synoptic_sites[i,]$sitecode, "_",
-                                    as.character(as.Date(synoptic_sites[i,]$enddate.UTC)),"_raw.csv"),
-            row.names=F)
-  saveRDS(dat, file=paste0("data/metabolism/raw/rds/",synoptic_sites[i,]$sitecode, "_",
-                           as.character(as.Date(synoptic_sites[i,]$enddate.UTC)),"_raw.rds"))
+for(i in 1:nrow(sites)){
+  vars <- as.character(unlist(query_available_data("NC",sites[i,]$sitecode)$variables))
+  dat <- request_data(sites[i,]$siteID, startdate=sites[i,]$startdate.UTC,enddate = sites[i,]$enddate.UTC, variables=vars)
+  write.csv(dat$data, file = paste0("data/metabolism/raw/",sites[i,]$sitecode, "_",
+                                    as.character(as.Date(sites[i,]$enddate.UTC)),"_raw.csv"), row.names=F)
 }
 
