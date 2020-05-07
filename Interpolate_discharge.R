@@ -24,9 +24,9 @@ sites <- left_join(sites, wsAreas[,c(2,7)], by = "sitecode")
 
 # find date range for which we need discharge for NHC sites
 
-sites <- sites[2:6,c(2,9:10)]
-dateRange <- c(min(sites$startdate.UTC), max(sites$enddate.UTC))
-DateTime_UTC <- seq(dateRange[1], dateRange[2], by = 15*60)
+sites <- sites[-c(8,9),] # get rid of MC751 and mud, they are not along same continuum
+#dateRange <- c(min(sites$startdate.UTC), max(sites$enddate.UTC))
+#DateTime_UTC <- seq(dateRange[1], dateRange[2], by = 15*60)
 
 
 # read in data from NHC and UNHC to get discharge
@@ -90,8 +90,8 @@ Qdat <- UNHC %>% select(DateTime_UTC, NHC_Q_cms, UNHC_Q_cms)
 Qdat$NHC_Q_cms <- na.approx(Qdat$NHC_Q_cms, na.rm=FALSE, maxgap=12)
 Qdat$UNHC_Q_cms <- na.approx(Qdat$UNHC_Q_cms, na.rm=FALSE, maxgap=12)
 
-plot(Qdat$UNHC_Q_cms, Qdat$NHC_Q_cms, xlab = "UNHC Q", ylab = "NHC Q", log = "xy")
-mQ <- glm(log(NHC_Q_cms)~log(UNHC_Q_cms), data=Qdat)
+plot(Qdat$UNHC_Q_cms[1:36300], Qdat$NHC_Q_cms[8:36307], xlab = "UNHC Q", ylab = "NHC Q",log="xy")#, ylim = c(0,100), xlim = c(0,400), log = "xy")
+mQ <- glm(log(NHC_Q_cms[7:36371])~log(UNHC_Q_cms[1:36365]), data=Qdat)
 a=summary(mQ)$coefficients[1,1]
 b=summary(mQ)$coefficients[2,1]
 abline(a,b , col = "red")
@@ -108,33 +108,96 @@ Qdat$notes <- as.character(NA)
 Qdat$notes[is.na(Qdat$NHC_Q_cms)&!is.na(Qdat$predNHC_Q)]<- "modeled NHC Q"
 Qdat$notes[is.na(Qdat$UNHC_Q_cms)&!is.na(Qdat$predUNHC_Q)]<- "modeled UNHC Q"
 
-Qdat$NHC_Q_cms[is.na(Qdat$NHC_Q_cms)] <- Qdat$predNHC_Q[is.na(Qdat$NHC_Q_cms)]
-Qdat$UNHC_Q_cms[is.na(Qdat$UNHC_Q_cms)] <- Qdat$predUNHC_Q[is.na(Qdat$UNHC_Q_cms)]
-
-plot(Qdat$DateTime_UTC, Qdat$NHC_Q_cms, log="y", main = "NHC")
-points(Qdat$DateTime_UTC[Qdat$notes=="modeled NHC Q"], Qdat$NHC_Q_cms[Qdat$notes=="modeled NHC Q"], col = "red")
-
-plot(Qdat$DateTime_UTC, Qdat$UNHC_Q_cms, log="y", main = "UNHC")
-points(Qdat$DateTime_UTC[Qdat$notes=="modeled UNHC Q"], Qdat$UNHC_Q_cms[Qdat$notes=="modeled UNHC Q"], col = "red")
-
 # snap NHC interpolated points to their neighbors
 
 NHC_gaps <- rle_custom(is.na(Qdat$NHC_Q_cms))
 UNHC_gaps <- rle_custom(is.na(Qdat$UNHC_Q_cms))
 
-# Add columns for Q for NHC sites
+
+
+# fill in and plot modeled data
+Qdat$NHC_modQ_cms <- Qdat$NHC_Q_cms
+Qdat$NHC_modQ_cms[is.na(Qdat$NHC_Q_cms)] <- Qdat$predNHC_Q[is.na(Qdat$NHC_Q_cms)]
+
+Qdat$UNHC_modQ_cms <- Qdat$UNHC_Q_cms
+Qdat$UNHC_modQ_cms[is.na(Qdat$UNHC_Q_cms)] <- Qdat$predUNHC_Q[is.na(Qdat$UNHC_Q_cms)]
+
+plot(Qdat$DateTime_UTC, Qdat$NHC_modQ_cms, log="y", main = "NHC")
+points(Qdat$DateTime_UTC[Qdat$notes=="modeled NHC Q"], Qdat$NHC_modQ_cms[Qdat$notes=="modeled NHC Q"], col = "red")
+
+plot(Qdat$DateTime_UTC, Qdat$UNHC_modQ_cms, log="y", main = "UNHC")
+points(Qdat$DateTime_UTC[Qdat$notes=="modeled UNHC Q"], Qdat$UNHC_modQ_cms[Qdat$notes=="modeled UNHC Q"], col = "red")
+
+# find endpoints of measured and modeled data in the gaps
+NHC_gaps <- NHC_gaps[NHC_gaps$values==1,]
+UNHC_gaps <- UNHC_gaps[UNHC_gaps$values==1,]
+
+# Don't allow interpolated discharge to be lower than NHC min flow
+NHCmin <- min(Qdat$NHC_Q_cms, na.rm=T)
+m<- min(Qdat$predNHC_Q, na.rm=T)
+t <- which(Qdat$predNHC_Q==m)
+
+for(i in 1:nrow(NHC_gaps)){
+  a<- NHC_gaps[i,]$starts
+  b <- NHC_gaps[i,]$stops
+  
+  startdiff <- Qdat$NHC_Q_cms[a-1] - Qdat$predNHC_Q[a]
+  if(b==nrow(Qdat)){
+    enddiff <- startdiff
+  } else{
+      enddiff <- Qdat$NHC_Q_cms[b+1] - Qdat$predNHC_Q[b]
+  }
+  if(is.na(startdiff)||is.na(enddiff)) next
+   diffQ <- seq(startdiff, enddiff, length.out=NHC_gaps[i,]$lengths)
+  if(t %in% seq(a, b)){
+   tmp1 <- seq(startdiff,(NHCmin-Qdat$predNHC_Q[t]), length.out=(t-a))
+   tmp2 <- seq((NHCmin-Qdat$predNHC_Q[t]), enddiff, length.out=(b-t+1))
+   diffQ <- c(tmp1,tmp2)
+  }
+  Qdat$NHC_modQ_cms[a:b]<- Qdat$predNHC_Q[a:b]+diffQ
+  
+}
+
+# snap UNHC gaps
+for(i in 1:nrow(UNHC_gaps)){
+  a<- UNHC_gaps[i,]$starts
+  b <- UNHC_gaps[i,]$stops
+  startdiff <- Qdat$UNHC_Q_cms[a-1] - Qdat$predUNHC_Q[a]
+  if(b==nrow(Qdat)){
+    enddiff <- startdiff
+  } else{
+    enddiff <- Qdat$UNHC_Q_cms[b+1] - Qdat$predUNHC_Q[b]
+  }
+  if(is.na(startdiff)||is.na(enddiff)) next
+  
+  diffQ <- seq(startdiff, enddiff, length.out=NHC_gaps[i,]$lengths)
+  Qdat$UNHC_modQ_cms[a:b]<- Qdat$predUNHC_Q[a:b]+diffQ
+  
+}
+
+# double check that everything looks okay
+plot(Qdat$DateTime_UTC, Qdat$NHC_modQ_cms, log="y", main = "NHC")
+points(Qdat$DateTime_UTC[Qdat$notes=="modeled NHC Q"], Qdat$NHC_modQ_cms[Qdat$notes=="modeled NHC Q"], col = "red")
+
+plot(Qdat$DateTime_UTC, Qdat$UNHC_modQ_cms, log="y", main = "UNHC")
+points(Qdat$DateTime_UTC[Qdat$notes=="modeled UNHC Q"], Qdat$UNHC_modQ_cms[Qdat$notes=="modeled UNHC Q"], col = "red")
+
+#######################################################################################################################
+
+# Add modeled Q for NHC sites to a dataframe with columns for each site to interpolate
 newQdat <- data.frame(matrix(NA, nrow=nrow(Qdat), ncol = (1+nrow(sites))))
 colnames(newQdat)<- c("DateTime_UTC",paste(sites$sitecode, "Q", sep="."))
 
 newQdat$DateTime_UTC <- Qdat$DateTime_UTC
+newQdat$NHC.Q <- Qdat$NHC_modQ_cms
+newQdat$UNHC.Q <- Qdat$UNHC_modQ_cms
 
-for(i in which(!is.na(Qdat$NHC_Q_cms))){
-  df <- data.frame(Q = c(Qdat[i,3], Qdat[i,4]), area = c(wsAreas$ws_area.km2[c(1,7)]))
+for(i in which(!is.na(newQdat$NHC.Q))){
+  df <- data.frame(Q = c(newQdat$NHC.Q[i], newQdat$UNHC.Q[i]), area = c(wsAreas$ws_area.km2[c(1,7)]))
   m <- glm(Q~area, data=df)
-  Qnew <- summary(m)$coefficients[1,1]+summary(m)$coefficients[2,1]*sites$ws_area.km2
-  newQdat[i,2:6] <-Qnew
+  Qnew <- summary(m)$coefficients[1,1]+summary(m)$coefficients[2,1]*sites$ws_area.km2[2:6]
+  newQdat[i,3:7] <-Qnew
 }
 
-Qdat <- full_join(Qdat, newQdat, by="DateTime_UTC")%>% select(-predNHC_Q, -predUNHC_Q)
-
-write_csv(Qdat, path = "../data/siteData/interpolatedQ_allsites.csv")
+newQdat <- full_join(newQdat, Qdat[,c(1,6)], by="DateTime_UTC")
+write_csv(newQdat, path = "data/siteData/interpolatedQ_allsites.csv")
