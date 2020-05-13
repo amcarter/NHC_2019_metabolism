@@ -85,7 +85,7 @@ UNHC$NHC_Q_cms <- (UNHC$level_m/a.NHC)^(1/b.NHC)
 UNHC$UNHC_Q_cms <- (UNHC$U.level_m/a.UNHC)^(1/b.UNHC)
 
 
-Qdat <- UNHC %>% select(DateTime_UTC, NHC_Q_cms, UNHC_Q_cms)
+Qdat <- UNHC %>% select(DateTime_UTC, AirPres_kPa, NHC_Q_cms, UNHC_Q_cms)
 
 Qdat$NHC_Q_cms <- na.approx(Qdat$NHC_Q_cms, na.rm=FALSE, maxgap=12)
 Qdat$UNHC_Q_cms <- na.approx(Qdat$UNHC_Q_cms, na.rm=FALSE, maxgap=12)
@@ -199,5 +199,5 @@ for(i in which(!is.na(newQdat$NHC.Q))){
   newQdat[i,3:7] <-Qnew
 }
 
-newQdat <- full_join(newQdat, Qdat[,c(1,6)], by="DateTime_UTC")
+newQdat <- full_join(newQdat, Qdat[,c(1,2,7)], by="DateTime_UTC")
 write_csv(newQdat, path = "data/siteData/interpolatedQ_allsites.csv")
