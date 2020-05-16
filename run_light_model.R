@@ -4,7 +4,9 @@
 #Created 5/14/2020
 #===============================================================================
 # library(devtools)
-# devtools::install_github("psavoy/StreamLightUtils")
+ devtools::install_github("psavoy/StreamLightUtils")
+ devtools::install_github("psavoy/StreamLight")
+library(StreamLight)
 library(StreamLightUtils)
 library(dplyr)
 library(lubridate)
@@ -60,7 +62,7 @@ library(lubridate)
     zip_dir <- "C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/light/AppEEARS_MODIS_LAI"
 
   #Request zip file
-    zip_file <- "hbef-audrey.zip"
+    zip_file <- "nhc_points.zip"
 
   #Unpack the MODIS AppEEARS request
     MOD_unpack <- AppEEARS_unpack(zip_file, zip_dir, request_sites)
@@ -72,15 +74,15 @@ library(lubridate)
 #Create model driver files
 #-------------------------------------------------
   #Applying the function
-    driver_sd <- "C:/Users/Phil/Desktop/HBEF_Audrey/driver files"
+    driver_sd <- "C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/light/driver_files"
     make_driver(sites[, c("Site_ID", "Lat", "Lon")], NLDAS_processed, 
       MOD_processed, save_dir = driver_sd)  
 
 #-------------------------------------------------
 #Extracting tree height
 #-------------------------------------------------
-  extract_height(sites[, "Site_ID"], sites[, "Lat"], sites[, "Lon"])
-
+ # extract_height(sites[, "Site_ID"], sites[, "Lat"], sites[, "Lon"])
+sites <- read.csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/light/NHC_parameters.csv", header = T)
 #-------------------------------------------------
 #Running the model    
 #-------------------------------------------------
@@ -104,12 +106,12 @@ library(lubridate)
     } #End batch_model
     
   #Applying the model to all sites
-    model_rd <- "C:/Users/Phil/Desktop/HBEF_Audrey/driver files"
-    model_sd <- "C:/Users/Phil/Desktop/HBEF_Audrey/predicted"
+    model_rd <- "C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/light/driver_files"
+    model_sd <- "C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/light/predicted"
 
   #Get the parameters for all sites
-    params <- read.csv("C:/Users/Phil/Desktop/HBEF_Audrey/HBEF_params.csv",
-      colClasses = c("character", rep("numeric", 9)), header = TRUE)
+    params <- read.csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/light/NHC_parameters.csv",
+      colClasses = c("character", rep("numeric", 5)), header = TRUE)
 
   #Running the model
     lapply(params[, "Site_ID"], FUN = batch_model, read_dir = model_rd,
