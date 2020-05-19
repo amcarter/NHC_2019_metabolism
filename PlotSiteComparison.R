@@ -42,8 +42,12 @@ for(site in sites){
   metab[w,2:7]<-NA
 }
 
+
+#############################################################################
+# metabolism comparison to all SP sites
 ylims=c(-10, 5)
 
+par(mfrow=c(1,1))
 plot(smry$DOY, smry$GPP, ylab='', yaxs='i', type='n',
      bty='n', lwd=4, xlab='', ylim=ylims, xaxs='i', xaxt='n', yaxt='n')
 polygon(x=c(smry$DOY, rev(smry$DOY)),
@@ -75,10 +79,49 @@ for(i in 1:6){
 k_all <- kde(na.omit(alldat[, c("GPP_filled", "ER_filled")]))
 k_nhc <- kde(na.omit(metab[,c("GPP","ER")]))
 #Plotting the kernel density plot
-plot(k_all, xlab = "GPP", ylab = "ER", ylim = c(-10, 0), xlim = c(0, 10),display = "slice")
+plot(k_all, xlab = "GPP", ylab = "ER", ylim = c(-15, 0), xlim = c(0, 15),display = "slice")
 
 par(new=T)
-plot(k_nhc, xaxt='n',yaxt='n', ylab='',xlab='',ylim = c(-10, 0), xlim = c(0, 10),display = "filled.contour")
+plot(k_nhc, xaxt='n',yaxt='n', ylab='',xlab='',ylim = c(-15, 0), xlim = c(0, 15),display = "filled.contour")
 #Add 1:1 line
 abline(0, -1)
 
+#########################################################
+# O2 exceedence plots
+  par(mfrow=c(4,3))
+  layout.matrix <- matrix(c(1,2,7,8,3,4,9,10,5,6,11,12), nrow = 4, ncol = 3)
+  
+  layout(mat = layout.matrix,
+         heights = c(1,3,1,3), # Heights of the two rows
+         widths = c(3,3,3)) # Widths of the two columns
+
+for(site in sites){
+  # Summarize by day
+  datdaily <- NHCdat$data[NHCdat$data$site==site,] %>% 
+    dplyr::group_by(date) %>% 
+    dplyr::summarise(DOsat = mean(DO.obs/DO.sat, na.rm=T))
+  datdaily$DOsat <- na.approx(datdaily$DOsat, na.rm=F)
+  
+  # Calculate exceedence curve for a site
+  tmp <- datdaily$DOsat[which(!is.na(datdaily$DOsat))]
+  tmp<- sort(tmp, decreasing=T)
+  index <- seq(1:length(tmp))
+  freq <- 100*(index/(1+length(tmp)))
+  
+  
+  par(mar = c(0,4,3,1))
+  specs <- NHCdat$specs[NHCdat$specs$site==site,]
+  plot(exp(specs$K600_lnQ_nodes_centers), specs$K600, log='x',ylab = "K600",xlab='',
+       xaxt='n',type='b',pch=19,ylim = range(NHCdat$specs$K600))
+ # axis(3, labels=F)
+  mtext("K 600 vs ln(Q)",3,-1.2,cex=.8)
+  par(mar=c(4,4,0,1))
+  plot(freq,tmp, lwd = 2, type="l", xlab='% exceedence',ylab="DO %sat")#, col = col, lty=lty)
+  mtext(site, 3,-2,adj=.8)  
+
+  par(new=T)
+  tmp <- metab[metab$site==site,]
+  tmp<- tmp[order(tmp$DOY),]
+  plot(tmp$DOY, -tmp$ER, type="l",ylim=c(0,30),xlab='',ylab='',xaxt='n',yaxt='n',col = "sienna", lwd=2)
+  
+}

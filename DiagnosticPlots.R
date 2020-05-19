@@ -11,7 +11,6 @@ library("scales")
 library("readr")
 
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism")
-sites <- c("UNHC","PWC","WBP", "WB", "CBP", "PM", "NHC")
 ylims=c(-15,5)
 kplot=6
 cumlim = c(-800,400)
@@ -19,11 +18,16 @@ GPP.col="#74B16D"
 ER.col="#B99D82"
 PAR.col = "#FFE083"
 hall_met <- read_csv("../Hall_50yearslater_NHC/hall_table_15.csv")
-sitematch <- data.frame(hall = c("Concrete", "Blackwood", "Wood Bridge"), 
-                        sitecode= c("CBP", "UNHC", "WB"))
+NHCdat <- readRDS("data/metabolism/condensed/allNHCsites.rds")
+metab <- NHCdat$metab
+metab[!is.na(metab$GPP)&metab$GPP<0,c("GPP","GPP.upper","GPP.lower")]<-NA
+metab[!is.na(metab$ER)&metab$ER>0,c("ER","ER.upper","ER.lower")]<-NA
+
+data <- NHCdat$data
+sites <- c("UNHC","WBP","WB","CBP","PM","NHC")
 
 pdf("figures/NHC2019diagnostics2.pdf",width = 7, height = 5.83,onefile = TRUE)
-site <- sites[1]
+  site <- sites[1]
 
   for(site in sites){
   
@@ -35,17 +39,7 @@ site <- sites[1]
 #-------------------------------------------------
   
     #Reading in the merged timeseries data. Data should be formatted with 3 columns: date, GPP, ER
-    dat <- readRDS(paste0("data/metabolism/condensed/condensed_",site,".rds"))
-    ts <- dat$metab 
-  #Replacing all negative GPP values with NA for the moment
-    ts[!is.na(ts$GPP) & ts$GPP < 0, "GPP"] <- NA
-          
-  #Replacing extremely high measurements (need more refined criteria)
-    ts[!is.na(ts$GPP) & ts$GPP > 100, "GPP"] <- NA
-      
-  #Replacing all positive ER values with NA for the moment
-    ts[!is.na(ts$ER) & ts$ER > 0, "ER"] <- NA
-  
+    ts <- metab[metab$site==site,] 
   # remove flow above 95%
     ts[!is.na(ts$discharge.m3s) & ts$discharge.m3s>quantile(ts$discharge.m3s, .95, na.rm=T),
        c("GPP", "GPP.upper","GPP.lower","ER","ER.upper","ER.lower")] <-NA
