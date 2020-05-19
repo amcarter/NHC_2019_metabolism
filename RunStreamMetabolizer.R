@@ -34,28 +34,35 @@ for(i in 2:length(filelist)){
 
 #############################
 # extract data from rds
+all_metab <- data.frame()
+all_data <- data.frame()
+all_specs <- data.frame()
 for(i in 1:length(filelist)){
     sitename <- substr(filelist[i], 1, nchar(filelist[i])-4)
     mod <- readRDS(paste0("data/metabolism/modeled/",sitename,".rds"))
     data_daily <- mod@data_daily %>% select(date, discharge.m3s=discharge.daily)
-    K600 <- mod@fit$daily %>% select(date, K600=K600_daily_50pct, K600.lower=K600_daily_2.5pct, K600.upper=K600_daily_97.5pct)
+    K600 <- mod@fit$daily  %>% select(date, K600=K600_daily_50pct, K600.lower=K600_daily_2.5pct, K600.upper=K600_daily_97.5pct)
     data_daily <- left_join(data_daily, K600, by="date")
     metab <- predict_metab(mod)
     metab <- left_join(metab, data_daily, by="date")
+    metab$site <- sitename
+    all_metab <- rbind(all_metab, metab)
     
     data <- predict_DO(mod)
+    data$site <- sitename
+    all_data <- rbind(all_data, data)
     
     mod_specs<- get_specs(mod)
     mod_specs$K600 <- exp(get_fit(mod)$KQ_binned$lnK600_lnQ_nodes_50pct)
     mod_specs$K600.lower <- exp(get_fit(mod)$KQ_binned$lnK600_lnQ_nodes_2.5pct)
     mod_specs$K600.upper <- exp(get_fit(mod)$KQ_binned$lnK600_lnQ_nodes_97.5pct)
     
-    
     filter_vec = names(mod_specs) %in% c("K600_lnQ_nodes_centers", "K600", "K600.upper", "K600.lower")
-    QvsK600 <- mod_specs[filter_vec]
+    QvsK600 <- as.data.frame(mod_specs[filter_vec])
+    QvsK600$site <- sitename
+    all_specs<- rbind(all_specs, QvsK600)
+}
+    metab_dat <- list(data=all_data, metab=all_metab, specs=all_specs)
     
-    
-    metab_dat <- list(data=data, metab=metab, QvsK600=QvsK600)
-    
-    saveRDS(metab_dat, paste0("data/metabolism/condensed/condensed_",sitename,".rds"))
+    saveRDS(metab_dat, "data/metabolism/condensed/allNHCsites.rds")
 }

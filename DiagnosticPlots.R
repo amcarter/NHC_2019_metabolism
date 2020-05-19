@@ -18,13 +18,17 @@ cumlim = c(-800,400)
 GPP.col="#74B16D"
 ER.col="#B99D82"
 PAR.col = "#FFE083"
-pdf("figures/NHC2019diagnostics.pdf",width = 7, height = 5.83,onefile = TRUE)
+hall_met <- read_csv("../Hall_50yearslater_NHC/hall_table_15.csv")
+sitematch <- data.frame(hall = c("Concrete", "Blackwood", "Wood Bridge"), 
+                        sitecode= c("CBP", "UNHC", "WB"))
+
+pdf("figures/NHC2019diagnostics2.pdf",width = 7, height = 5.83,onefile = TRUE)
 site <- sites[1]
 
   for(site in sites){
   
   #Setting up graphical parameters for a multipanel graph
-  layout(matrix(c(1, 1,1,2, 2,2,  3, 3,4,4,5,5), 2, 6, byrow = TRUE))
+  layout(matrix(c(1, 1,2, 3,4,5), 2, 3, byrow = TRUE))
     par(oma=c(0,0,2,0))
     #-------------------------------------------------
 #Reading in and processing the data
@@ -42,6 +46,9 @@ site <- sites[1]
   #Replacing all positive ER values with NA for the moment
     ts[!is.na(ts$ER) & ts$ER > 0, "ER"] <- NA
   
+  # remove flow above 95%
+    ts[!is.na(ts$discharge.m3s) & ts$discharge.m3s>quantile(ts$discharge.m3s, .95, na.rm=T),
+       c("GPP", "GPP.upper","GPP.lower","ER","ER.upper","ER.lower")] <-NA
   #Making an uniterrupted timeseries and add in a newjd column
     #Divide date into year and day
       ts$Year <- as.numeric(format(ts$date, "%Y"))
@@ -103,43 +110,74 @@ site <- sites[1]
             col=alpha(ER.col, 0.3), border=NA)
     legend("bottomleft", c("GPP", "ER"), bty = "n", lty = c(1,1,1),lwd = 3, 
            col = c(GPP.col,  ER.col))
+    #get hall data
+    if(site %in% sitematch$sitecode){
+      hall <- sitematch$hall[sitematch$sitecode==site]
+      hall_dat <- hall_met[hall_met$site==hall,]
+      hall_dat$newdate <- base::as.Date(hall_dat$newdate, format="%m/%d/%Y")
+      hall_dat$DOY <-as.numeric(format(hall_dat$newdate, "%j"))
+      
+      points(hall_dat$DOY, hall_dat$GPP_gO2m2d, col = "forestgreen", pch=20, cex=1.7)
+      points(hall_dat$DOY, -hall_dat$ER_gO2m2d, col = "brown4", pch=20, cex=1.7)
+      full_year <- data.frame(DOY = seq(1:366))
+      hdat <- hall_dat %>% group_by(DOY)%>%
+        summarize(ER=mean(ER_gO2m2d, na.rm=T),
+                  GPP=mean(GPP_gO2m2d, na.rm=T))
+      hdat<-  left_join(full_year, hdat, by="DOY")
+      hdata<- hdatb<-hdat
+      hdata$DOY <- seq(-365,0)
+      hdatb$DOY <- seq(367,(367+365))
+      hdat_wrap <- rbind(hdata, hdat, hdatb)
+      hdat_wrap$ER <- na.approx(hdat_wrap$ER, na.rm=F)
+      hdat_wrap$GPP <- na.approx(hdat_wrap$GPP, na.rm=F)
+      hdat <- hdat_wrap[hdat_wrap$DOY %in% seq(1,366),]
+    } else {hdat = NA}
     
-######################################################################################
-# storm responses
-    #read in daily storm data
-    allsites_storms<- read_csv('data/stormmet.csv')
-    # how many days do you want to look at?
-    predays <- 4
-    postdays <- 6
+# ######################################################################################
+# # storm responses
+#     #read in daily storm data
+#     allsites_storms<- read_csv('data/stormmet.csv')
+#     # how many days do you want to look at?
+#     predays <- 4
+#     postdays <- 6
+#     
+#     storms = which(allsites_storms$storm==1)
+#     starts <- storms-predays
+#     ends <- storms+postdays
+#     allsites_storms$stormday <- NA
+#     for(i in 1:length(starts)){
+#       n <-starts[i]
+#       allsites_storms$stormday[n:(n+predays+postdays)]<- seq(-2,5, by=1)
+#     }
+#     storms<- allsites_storms[!is.na(allsites_storms$stormday),]
+#     
+#     #plot storm occurance relative to metab series
+#       subset <- storms[storms$site==site,]
+#       stormstarts <- which(subset$storm==1)-2
+#       plot( seq(-predays, postdays),subset$GPP[stormstarts[1]:(stormstarts[1]+predays+postdays)],ylim=c(-10,5), 
+#             ylab="gO2/m2/d", xlab="days since storm", type="n")
+#       mtext("10 largest storms", 3, -1, adj=.9, cex=.9)
+#       abline(v=0, col="gray", lty=2, lwd=2)
+#       abline(h=0)
+#       for(j in 1:length(stormstarts)){
+#         n <- stormstarts[j]
+#         lines(seq(-predays,postdays), subset$GPP[n:(n+predays+postdays)], col = alpha(GPP.col,.7), lwd=2)
+#         lines(seq(-predays,postdays), subset$ER[n:(n+predays+postdays)], col = alpha(ER.col,.7), lwd=2)
+#       }
     
-    storms = which(allsites_storms$storm==1)
-    starts <- storms-predays
-    ends <- storms+postdays
-    allsites_storms$stormday <- NA
-    for(i in 1:length(starts)){
-      n <-starts[i]
-      allsites_storms$stormday[n:(n+predays+postdays)]<- seq(-2,5, by=1)
-    }
-    storms<- allsites_storms[!is.na(allsites_storms$stormday),]
-    
-    #plot storm occurance relative to metab series
-      subset <- storms[storms$site==site,]
-      stormstarts <- which(subset$storm==1)-2
-      plot( seq(-predays, postdays),subset$GPP[stormstarts[1]:(stormstarts[1]+predays+postdays)],ylim=c(-10,5), 
-            ylab="gO2/m2/d", xlab="days since storm", type="n")
-      mtext("10 largest storms", 3, -1, adj=.9, cex=.9)
-      abline(v=0, col="gray", lty=2, lwd=2)
-      abline(h=0)
-      for(j in 1:length(stormstarts)){
-        n <- stormstarts[j]
-        lines(seq(-predays,postdays), subset$GPP[n:(n+predays+postdays)], col = alpha(GPP.col,.7), lwd=2)
-        lines(seq(-predays,postdays), subset$ER[n:(n+predays+postdays)], col = alpha(ER.col,.7), lwd=2)
-      }
-    
-    
-    
-    
-    
+#####################################################
+# plot ER vs K600 diagnostic plot
+mdat <- select(ts, ER, K600)
+mdat <- mdat[mdat$ER>-15,]
+mdat$ER <- -mdat$ER
+plot(mdat$ER, mdat$K600, xlim = c(0,-ylims[1]),ylim=c(0,20),
+     xlab = "ER", ylab="K600", pch=20)    
+m <- lm(K600~(ER), mdat)
+a <- m$coefficients[1]
+b <- m$coefficients[2]
+abline(a,b, col="grey60")
+mtext(paste0("r^2 = ",round(summary(m)$adj.r.squared,2)),1, -1)
+
 #-------------------------------------------------
 #Cumulative flux plots
 #-------------------------------------------------
@@ -170,6 +208,13 @@ site <- sites[1]
               na.approx(c(na_rm$csum_er.lower, rev(na_rm$csum_er.upper)), na.rm=FALSE),
               col = alpha(ER.col, 0.3), border=NA)      
     abline(h=0)  
+    
+    if(!is.na(hdat)){
+      hdat$csumGPP <- cumsum(hdat$GPP)
+      points(hdat$DOY, hdat$csumGPP, pch=20, cex=.5,col = "forestgreen")
+      hdat$csumER <- cumsum(hdat$ER)
+      points(hdat$DOY, -hdat$csumER, cex=.5, pch=20, col = "brown4")
+    }
       
 
 #-------------------------------------------------
