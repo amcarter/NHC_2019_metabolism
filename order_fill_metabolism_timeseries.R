@@ -29,6 +29,8 @@ for(site in sites){
 
 # create dataframe with filled DOY ordered metabolism estimates
 metab_ordered <- data.frame()
+metab_filled <- data.frame()
+
 for(site in sites){
   tmp<- metab[metab$site==site,]
   #List of years 
@@ -64,17 +66,18 @@ for(site in sites){
   
   #Placing the data in the correct order
   ts_ordered <- ts_full[order(ts_full$year, ts_full$DOY), ]  %>% select(-msgs.fit, -warnings, -errors)
+  ts_ordered$site <- site
+  ts_ordered$date <- as.Date(paste(ts_ordered$year, ts_ordered$DOY), format='%Y %j')
   #Calculating average GPP timeseries
   avg_trajectory <- aggregate(ts_ordered, by = list(ts_ordered$DOY), FUN = mean, na.rm = TRUE)
   tmp<- select(avg_trajectory, DOY, GPP, GPP.upper, GPP.lower, ER, ER.upper, ER.lower, K600, K600.upper, K600.lower,discharge.m3s)
   tmp$site <- site
+  tmp[,2:11]<- as.data.frame(apply(tmp[,2:11], 2, na.approx, na.rm=FALSE))
   
-  metab_ordered <- bind_rows(metab_ordered,tmp)
+  metab_filled <- bind_rows(metab_filled,tmp)
+  metab_ordered <- bind_rows(metab_ordered,ts_ordered)
 }
-metab_filled <- as.data.frame(
-  apply(metab_ordered[,2:11], 2, na.approx, na.rm=FALSE))
-
-metab_filled <- bind_cols(metab_ordered[,c("site","DOY")],metab_filled)
+str(metab_ordered)
 
 write_csv(metab_ordered, "data/metabolism/ordered_NHC_sites_metabolism.csv")
 write_csv(metab_filled, "data/metabolism/filled_NHC_sites_metabolism.csv")

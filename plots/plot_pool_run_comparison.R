@@ -40,6 +40,7 @@ cum_run <- as.data.frame(apply(avg_run, 2, cumsum))
 cum_run$DOY <- 1:366
 
 png("figures/pool_run_metab_comparison.png", width=600, height=240)
+  metab_ordered <- metab_filled
   par(mfrow = c(1,3), mar = c(0,0,0,0), oma=c(5,5,4,5))
   layout(t(c(1,2,3)),widths=c(1.5,1.5,1.2), heights=(1) )
     plot(metab_ordered$DOY, metab_ordered$GPP, ylim = c(-12,4), type="n", xlab="",ylab="",xaxt="n",yaxt="n",col.axis=bor.col)
@@ -55,7 +56,7 @@ png("figures/pool_run_metab_comparison.png", width=600, height=240)
       
       
     abline(h=0, col=bor.col )
-    mtext("Pools", 3, -2, adj=.8, cex=1.2, col=bor.col)
+    mtext("Pools (n=3)", 3, -2, adj=.7, cex=1.2, col=bor.col)
     axis(2, las=2, line=0, xpd=NA, tck=-.02, labels=FALSE,
          at=round(seq(-12,4, by=2), 1))
     axis(2, las=2, line=-0.5, xpd=NA, tcl=0, col='transparent',
@@ -79,7 +80,7 @@ png("figures/pool_run_metab_comparison.png", width=600, height=240)
       
       
     abline(h=0, col=bor.col )
-    mtext("Runs", 3, -2, adj=.8, cex=1.2, col=bor.col)
+    mtext("Runs (n=3)", 3, -2, adj=.7, cex=1.2, col=bor.col)
     t<- seq.Date(as.Date("2019-02-01"), as.Date("2019-12-31"),by = "2 months")
     axis(1, at =as.numeric(format(t, "%j")) , labels=FALSE)
     text(x = as.numeric(format(t, "%j")), y = par("usr")[3]-.5 , labels = format(t, "%b"), 
@@ -93,15 +94,16 @@ png("figures/pool_run_metab_comparison.png", width=600, height=240)
     plot(cum_run$DOY, cum_run$GPP, ylim = c(-1050,350),type="l", lwd=2, col=run.col,
          xlab="",ylab="",xaxt="n",yaxt="n", col.axis=bor.col)  
     lines(cum_run$DOY, cum_run$ER, col=run.col, lwd=2)
-    polygon(c(cum_run$DOY, rev(cum_run$DOY)), c(cum_run$GPP_lower, rev(cum_run$GPP_upper)), 
+    polygon(c(cum_run$DOY, rev(cum_run$DOY)), 
+            na.approx(c(cum_run$GPP_lower, rev(cum_run$GPP_upper)), na.rm=F), 
             col=alpha(run.col, .3), border=F)
-    polygon(c(cum_run$DOY, rev(cum_run$DOY)), c(cum_run$ER_lower, rev(cum_run$ER_upper)), 
+    polygon(c(cum_run$DOY, rev(cum_run$DOY)), na.approx(c(cum_run$ER_lower, rev(cum_run$ER_upper)), na.rm=F), 
             col=alpha(run.col, .3), border=F)
     lines(cum_pool$DOY, cum_pool$GPP, lwd=2, col=pool.col)  
     lines(cum_pool$DOY, cum_pool$ER, col=pool.col, lwd=2)
-    polygon(c(cum_pool$DOY, rev(cum_pool$DOY)), c(cum_pool$GPP_lower, rev(cum_pool$GPP_upper)), 
+    polygon(c(cum_pool$DOY, rev(cum_pool$DOY)), na.approx(c(cum_pool$GPP_lower, rev(cum_pool$GPP_upper)),na.rm=F), 
             col=alpha(pool.col, .3), border=F)
-    polygon(c(cum_pool$DOY, rev(cum_pool$DOY)), c(cum_pool$ER_lower, rev(cum_pool$ER_upper)), 
+    polygon(c(cum_pool$DOY, rev(cum_pool$DOY)), na.approx(c(cum_pool$ER_lower, rev(cum_pool$ER_upper)),na.rm=F), 
             col=alpha(pool.col, .3), border=F)
     
     abline(h=0, col=bor.col )

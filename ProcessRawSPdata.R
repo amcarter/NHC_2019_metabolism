@@ -8,8 +8,8 @@ library(streamMetabolizer)
 library(lubridate)
 library(tidyverse)
 
-sites <- read_csv("data/siteData/NHCsite_metadata.csv")
-Qdat <- read_csv("data/siteData/interpolatedQ_allsites.csv")
+sites <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/siteData/NHCsite_metadata.csv")
+Qdat <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/siteData/interpolatedQ_allsites.csv")
 filelist <- list.files("data/metabolism/raw")
 
 # get rid of MC751 and Mud for now

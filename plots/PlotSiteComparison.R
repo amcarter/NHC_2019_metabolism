@@ -1,0 +1,260 @@
+# Inter site comparison of NHC metabolism
+# comparison to whole SP database
+
+library(dplyr)
+library(tidyverse)
+library(zoo)
+
+setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism")
+
+alldat <- readRDS("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/data/streampulse/gapPhilled_data.rds")
+SP_models<- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/data/streampulse/all_daily_model_results.csv")
+
+alldat[!is.na(alldat$GPP_filled)& alldat$GPP_filled<0,"GPP"]<-NA
+alldat[!is.na(alldat$ER_filled)& alldat$ER_filled>0,"ER"]<-NA
+
+smry <- group_by(alldat, DOY) %>%
+  summarize(GPP=median(GPP_filled, na.rm=T),
+            GPP.upper=quantile(GPP_filled, .75, na.rm = T),
+            GPP.lower=quantile(GPP_filled, .25, na.rm=T),
+            ER=median(ER, na.rm=T),
+            ER.upper=quantile(ER_filled, .75, na.rm = T),
+            ER.lower=quantile(ER_filled, .25, na.rm=T),
+            K600=median(K600, na.rm=T),
+            K600.upper=quantile(K600, .75, na.rm = T),
+            K600.lower=quantile(K600, .25, na.rm=T))
+
+metab_ordered <- read_csv("data/metabolism/ordered_NHC_sites_metabolism.csv")
+metab_filled <- read_csv("data/metabolism/filled_NHC_sites_metabolism.csv")
+sites <- c("UNHC","PWC", "WBP","WB","CBP","PM","NHC")
+
+# compile NHC and UNHC data
+NHC_old <- alldat[alldat$sitecode=="NC_NHC",]%>% 
+  select(date=Date, year=Year, DOY=DOY,GPP=GPP_filled, ER=ER_filled,
+         K600=K600, discharge.m3s=discharge)
+NHC_old <- NHC_old[-c(1:366),]
+NHC_new <- metab_ordered[metab_ordered$site=="NHC"&metab_ordered$year==2020,]
+NHC<- bind_rows(NHC_old, NHC_new)
+NHC_smry <- group_by(NHC, DOY) %>%
+  summarize(GPP_m=mean(GPP, na.rm=T),
+            GPP.75=quantile(GPP, .75, na.rm = T),
+            GPP.25=quantile(GPP, .25, na.rm=T),
+            ER_m=mean(ER, na.rm=T),
+            ER.75=quantile(ER, .75, na.rm = T),
+            ER.25=quantile(ER, .25, na.rm=T),
+            GPP.upper=quantile(GPP, 1, na.rm = T),
+            GPP.lower=quantile(GPP, 0, na.rm=T),
+            ER.upper=quantile(ER, 1, na.rm = T),
+            ER.lower=quantile(ER, 0, na.rm=T),
+            K600=median(K600, na.rm=T))
+
+
+UNHC_old <-alldat[alldat$sitecode=="NC_UNHC",]%>% 
+  select(date=Date, year=Year, DOY=DOY,GPP=GPP_filled, ER=ER_filled,
+         K600=K600, discharge.m3s=discharge)
+UNHC_old <- UNHC_old[-(1:200),]
+
+UNHC_new <- metab_ordered[metab_ordered$site=="UNHC"&metab_ordered$year==2020,]
+UNHC<- bind_rows(UNHC_old, UNHC_new)
+UNHC_smry <- group_by(UNHC, DOY) %>%
+  summarize(GPP_m=mean(GPP, na.rm=T),
+          GPP.75=quantile(GPP, .75, na.rm = T),
+          GPP.25=quantile(GPP, .25, na.rm=T),
+          ER_m=mean(ER, na.rm=T),
+          ER.75=quantile(ER, .75, na.rm = T),
+          ER.25=quantile(ER, .25, na.rm=T),
+          GPP.upper=quantile(GPP, 1, na.rm = T),
+          GPP.lower=quantile(GPP, 0, na.rm=T),
+          ER.upper=quantile(ER, 1, na.rm = T),
+          ER.lower=quantile(ER, 0, na.rm=T),
+          K600=median(K600, na.rm=T))
+
+# create aggregated timeseries data from NHC sites
+metab_smry <- group_by(metab_ordered, DOY) %>%
+  summarize(GPP_m=mean(GPP, na.rm=T),
+            GPP.75=quantile(GPP, .75, na.rm = T),
+            GPP.25=quantile(GPP, .25, na.rm=T),
+            ER_m=mean(ER, na.rm=T),
+            ER.75=quantile(ER, .75, na.rm = T),
+            ER.25=quantile(ER, .25, na.rm=T),
+            GPP.upper=quantile(GPP, 1, na.rm = T),
+            GPP.lower=quantile(GPP, 0, na.rm=T),
+            ER.upper=quantile(ER, 1, na.rm = T),
+            ER.lower=quantile(ER, 0, na.rm=T),
+            K600=median(K600, na.rm=T))
+
+#############################################################################
+# metabolism comparison to all SP sites
+
+png("figures/metabolism_comparison_allSPdata.png", width=700, height=320)
+
+  par(mfrow = c(1,3), mar=c(0,1,0,0), oma=c(5,5,2,2))
+  
+  ylims=c(-18, 10)
+  
+  # between site comparison
+  plot(smry$DOY, smry$GPP, ylab='', yaxs='i', type='n',
+       bty='n', lwd=4, xlab='', ylim=ylims, xaxs='i', xaxt='n', yaxt='n')
+  polygon(x=c(smry$DOY, rev(smry$DOY)),
+          y=c(smry$GPP.lower, rev(smry$GPP.upper)),
+          border=NA, col=alpha('forestgreen', alpha=.5))
+  polygon(x=c(smry$DOY, rev(smry$DOY)),
+          y=c(smry$ER.lower, rev(smry$ER.upper)),
+          border=NA, col=alpha('sienna', alpha=.5))
+  axis(2, las=2, line=0, xpd=NA, tck=-.02, labels=FALSE,
+       at=round(seq(ylims[1],ylims[2], by=3), 1))
+  axis(2, las=2, line=-0.5, xpd=NA, tcl=0, col='transparent',
+       at=round(seq(ylims[1], ylims[2], by=3), 1),)
+  abline(h=0, lty=1, lwd=1)
+  mtext(expression(paste("g O"[2]~"m"^"-2"~" d"^"-1")), side=2, line=2.5)
+  mtext('DOY', side=1, line=2, font=2)
+  
+  polygon(c(metab_smry$DOY, rev(metab_smry$DOY)),
+          na.approx(c(metab_smry$GPP.25, rev(metab_smry$GPP.75)),na.rm=F),
+          col=alpha("black",.5), border=NA)
+  polygon(c(metab_smry$DOY, rev(metab_smry$DOY)),
+          na.approx(c(metab_smry$GPP.lower, rev(metab_smry$GPP.upper)),na.rm=F),
+          col=alpha("black",.3), border=NA)
+  
+  polygon(c(metab_smry$DOY, rev(metab_smry$DOY)),
+          na.approx(c(metab_smry$ER.25, rev(metab_smry$ER.75)),na.rm=F),
+          col=alpha("black",.5), border=NA)
+  polygon(c(metab_smry$DOY, rev(metab_smry$DOY)),
+          na.approx(c(metab_smry$ER.lower, rev(metab_smry$ER.upper)),na.rm=F),
+          col=alpha("black",.3), border=NA)
+  
+  
+  mtext("Across sites (n=6)", 3, -2, font=4, col="grey30")
+  
+  legend("bottomleft", legend=c("All Sites GPP (middle 50%)","All Sites ER (middle 50%)", "Local Sites (middle 50%)", "Local Sites (full range)"),
+         fill =c(alpha("forestgreen",.5), alpha("sienna", .5), alpha("black", .8), alpha("black",.3)), 
+         border=NA, bty="n", cex=1.5)
+  # 
+  # cols <- colorRampPalette(c("grey60", "grey25"))(6)
+  # for(i in 1:6){
+  #   tmp <- metab[metab$site==sites[i],]
+  #   tmp<- tmp[order(tmp$DOY),]
+  #   lines(tmp$DOY, tmp$GPP, col = cols[i], lwd=2)
+  #   lines(tmp$DOY, tmp$ER, col = cols[i], lwd=2)
+  # }
+  
+  #Interannual variation
+  plot(smry$DOY, smry$GPP, ylab='', yaxs='i', type='n',
+       bty='n', lwd=4, xlab='', ylim=ylims, xaxs='i', xaxt='n', yaxt='n')
+  polygon(x=c(smry$DOY, rev(smry$DOY)),
+          y=c(smry$GPP.lower, rev(smry$GPP.upper)),
+          border=NA, col=alpha('forestgreen', alpha=.5))
+  polygon(x=c(smry$DOY, rev(smry$DOY)),
+          y=c(smry$ER.lower, rev(smry$ER.upper)),
+          border=NA, col=alpha('sienna', alpha=.5))
+  axis(2, las=2, line=0, xpd=NA, tck=-.02, labels=FALSE,
+       at=round(seq(ylims[1],ylims[2], by=2), 1))
+  #axis(2, las=2, line=-0.5, xpd=NA, tcl=0, col='transparent',
+  #     at=round(seq(ylims[1], ylims[2], by=2), 1))
+  abline(h=0, lty=1, lwd=1)
+  #mtext(expression(paste("g O"[2]~"m"^"-2"~" d"^"-1")), side=2, line=2.5)
+  mtext('DOY', side=1, line=2, font=2)
+  
+  polygon(c(NHC_smry$DOY, rev(NHC_smry$DOY)),
+          na.approx(c(NHC_smry$GPP.25, rev(NHC_smry$GPP.75)),na.rm=F),
+          col=alpha("black",.5), border=NA)
+  polygon(c(NHC_smry$DOY, rev(NHC_smry$DOY)),
+          na.approx(c(NHC_smry$GPP.lower, rev(NHC_smry$GPP.upper)),na.rm=F),
+          col=alpha("black",.3), border=NA)
+  
+  polygon(c(NHC_smry$DOY, rev(NHC_smry$DOY)),
+          na.approx(c(NHC_smry$ER.25, rev(NHC_smry$ER.75)),na.rm=F),
+          col=alpha("black",.5), border=NA)
+  polygon(c(NHC_smry$DOY, rev(NHC_smry$DOY)),
+          na.approx(c(NHC_smry$ER.lower, rev(NHC_smry$ER.upper)),na.rm=F),
+          col=alpha("black",.3), border=NA)
+  
+  mtext("NHC interannual (n=4)", 3, -2, font=4, col="grey30")
+  
+  
+  #Interannual variation
+  plot(smry$DOY, smry$GPP, ylab='', yaxs='i', type='n',
+       bty='n', lwd=4, xlab='', ylim=ylims, xaxs='i', xaxt='n', yaxt='n')
+  polygon(x=c(smry$DOY, rev(smry$DOY)),
+          y=c(smry$GPP.lower, rev(smry$GPP.upper)),
+          border=NA, col=alpha('forestgreen', alpha=.5))
+  polygon(x=c(smry$DOY, rev(smry$DOY)),
+          y=c(smry$ER.lower, rev(smry$ER.upper)),
+          border=NA, col=alpha('sienna', alpha=.5))
+  axis(2, las=2, line=0, xpd=NA, tck=-.02, labels=FALSE,
+       at=round(seq(ylims[1],ylims[2], by=2), 1))
+  #axis(2, las=2, line=-0.5, xpd=NA, tcl=0, col='transparent',
+  #     at=round(seq(ylims[1], ylims[2], by=2), 1))
+  abline(h=0, lty=1, lwd=1)
+  #mtext(expression(paste("g O"[2]~"m"^"-2"~" d"^"-1")), side=2, line=2.5)
+  mtext('DOY', side=1, line=2, font=2)
+  
+  polygon(c(UNHC_smry$DOY, rev(UNHC_smry$DOY)),
+          na.approx(c(UNHC_smry$GPP.25, rev(UNHC_smry$GPP.75)),na.rm=F),
+          col=alpha("black",.5), border=NA)
+  polygon(c(UNHC_smry$DOY, rev(UNHC_smry$DOY)),
+          na.approx(c(UNHC_smry$GPP.lower, rev(UNHC_smry$GPP.upper)),na.rm=F),
+          col=alpha("black",.3), border=NA)
+  
+  polygon(c(UNHC_smry$DOY, rev(UNHC_smry$DOY)),
+          na.approx(c(UNHC_smry$ER.25, rev(UNHC_smry$ER.75)),na.rm=F),
+          col=alpha("black",.5), border=NA)
+  polygon(c(UNHC_smry$DOY, rev(UNHC_smry$DOY)),
+          na.approx(c(UNHC_smry$ER.lower, rev(UNHC_smry$ER.upper)),na.rm=F),
+          col=alpha("black",.3), border=NA)
+  
+  mtext("UNHC interannual (n=4)", 3, -2, font=4, col="grey30")
+
+dev.off()
+#####################################
+# kernel density plot
+#Kernel density calculation
+k_all <- kde(na.omit(alldat[, c("GPP_filled", "ER_filled")]))
+k_nhc <- kde(na.omit(metab[,c("GPP","ER")]))
+#Plotting the kernel density plot
+plot(k_all, xlab = "GPP", ylab = "ER", ylim = c(-15, 0), xlim = c(0, 15),display = "slice")
+
+par(new=T)
+plot(k_nhc, xaxt='n',yaxt='n', ylab='',xlab='',ylim = c(-15, 0), xlim = c(0, 15),display = "filled.contour")
+#Add 1:1 line
+abline(0, -1)
+
+#########################################################
+# O2 exceedence plots
+  par(mfrow=c(4,3))
+  layout.matrix <- matrix(c(1,2,7,8,3,4,9,10,5,6,11,12), nrow = 4, ncol = 3)
+  
+  layout(mat = layout.matrix,
+         heights = c(1,3,1,3), # Heights of the two rows
+         widths = c(3,3,3)) # Widths of the two columns
+
+for(site in sites){
+  # Summarize by day
+  datdaily <- NHCdat$data[NHCdat$data$site==site,] %>% 
+    dplyr::group_by(date) %>% 
+    dplyr::summarise(DOsat = mean(DO.obs/DO.sat, na.rm=T))
+  datdaily$DOsat <- na.approx(datdaily$DOsat, na.rm=F)
+  
+  # Calculate exceedence curve for a site
+  tmp <- datdaily$DOsat[which(!is.na(datdaily$DOsat))]
+  tmp<- sort(tmp, decreasing=T)
+  index <- seq(1:length(tmp))
+  freq <- 100*(index/(1+length(tmp)))
+  
+  
+  par(mar = c(0,4,3,1))
+  specs <- NHCdat$specs[NHCdat$specs$site==site,]
+  plot(exp(specs$K600_lnQ_nodes_centers), specs$K600, log='x',ylab = "K600",xlab='',
+       xaxt='n',type='b',pch=19,ylim = range(NHCdat$specs$K600))
+ # axis(3, labels=F)
+  mtext("K 600 vs ln(Q)",3,-1.2,cex=.8)
+  par(mar=c(4,4,0,1))
+  plot(freq,tmp, lwd = 2, type="l", xlab='% exceedence',ylab="DO %sat")#, col = col, lty=lty)
+  mtext(site, 3,-2,adj=.8)  
+
+  par(new=T)
+  tmp <- metab[metab$site==site,]
+  tmp<- tmp[order(tmp$DOY),]
+  plot(tmp$DOY, -tmp$ER, type="l",ylim=c(0,30),xlab='',ylab='',xaxt='n',yaxt='n',col = "sienna", lwd=2)
+  
+}
