@@ -12,6 +12,7 @@ alldat <- readRDS("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/data/str
 
 alldat[!is.na(alldat$GPP_filled)& alldat$GPP_filled<0,"GPP"]<-NA
 alldat[!is.na(alldat$ER_filled)& alldat$ER_filled>0,"ER"]<-NA
+NHC <- alldat[alldat$sitecode=="NC_NHC",]
 
 smry <- group_by(alldat, DOY) %>%
   summarize(GPP=median(GPP_filled, na.rm=T),
@@ -24,38 +25,36 @@ smry <- group_by(alldat, DOY) %>%
             K600.upper=quantile(K600, .75, na.rm = T),
             K600.lower=quantile(K600, .25, na.rm=T))
 
-NHCdat <- readRDS("data/metabolism/condensed/allNHCsites.rds")
-sites <- c("UNHC", "WBP","WB","CBP","PM","NHC")
+metab_ordered <- read_csv("data/metabolism/ordered_NHC_sites_metabolism.csv")
+metab_filled <- read_csv("data/metabolism/filled_NHC_sites_metabolism.csv")
+sites <- c("UNHC","PWC", "WBP","WB","CBP","PM","NHC")
 
-metab <- NHCdat$metab
-metab$DOY <- as.numeric(format(metab$date, "%j"))
-
-# Clean up data to remove negative GPP, positive ER and high flow
-
-metab[!is.na(metab$GPP)& metab$GPP<0,"GPP"]<-NA
-metab[!is.na(metab$ER)& metab$ER>0,"ER"]<-NA
-Q_threshold=.95
-
-for(site in sites){
-  Q <- quantile(metab[metab$site==site,]$discharge.m3s, Q_threshold, na.rm=T)
-  w<-which(metab$site==site & metab$discharge.m3s>Q)
-  metab[w,2:7]<-NA
-}
-
+metab_smry <- group_by(metab_ordered, DOY) %>%
+  summarize(GPP_m=mean(GPP, na.rm=T),
+            GPP.75=quantile(GPP, .75, na.rm = T),
+            GPP.25=quantile(GPP, .25, na.rm=T),
+            ER_m=mean(ER, na.rm=T),
+            ER.75=quantile(ER, .75, na.rm = T),
+            ER.25=quantile(ER, .25, na.rm=T),
+            GPP.upper=quantile(GPP, 1, na.rm = T),
+            GPP.lower=quantile(GPP, 0, na.rm=T),
+            ER.upper=quantile(ER, 1, na.rm = T),
+            ER.lower=quantile(ER, 0, na.rm=T),
+            K600=median(K600, na.rm=T))
 
 #############################################################################
 # metabolism comparison to all SP sites
-ylims=c(-10, 5)
+ylims=c(-12, 5)
 
 par(mfrow=c(1,1))
 plot(smry$DOY, smry$GPP, ylab='', yaxs='i', type='n',
      bty='n', lwd=4, xlab='', ylim=ylims, xaxs='i', xaxt='n', yaxt='n')
 polygon(x=c(smry$DOY, rev(smry$DOY)),
         y=c(smry$GPP.lower, rev(smry$GPP.upper)),
-        border=NA, col=alpha('forestgreen', alpha=0.4))
+        border=NA, col=alpha('forestgreen', alpha=.5))
 polygon(x=c(smry$DOY, rev(smry$DOY)),
         y=c(smry$ER.lower, rev(smry$ER.upper)),
-        border=NA, col=alpha('sienna', alpha=0.4))
+        border=NA, col=alpha('sienna', alpha=.5))
 axis(2, las=2, line=0, xpd=NA, tck=-.02, labels=FALSE,
      at=round(seq(ylims[1],ylims[2], by=2), 1))
 axis(2, las=2, line=-0.5, xpd=NA, tcl=0, col='transparent',
@@ -63,6 +62,21 @@ axis(2, las=2, line=-0.5, xpd=NA, tcl=0, col='transparent',
 abline(h=0, lty=1, lwd=1)
 mtext(expression(paste("g O"[2]~"m"^"-2"~" d"^"-1")), side=2, line=2.5)
 mtext('DOY', side=1, line=2, font=2)
+
+polygon(c(metab_smry$DOY, rev(metab_smry$DOY)),
+        na.approx(c(metab_smry$GPP.25, rev(metab_smry$GPP.75)),na.rm=F),
+        col=alpha("black",.5), border=NA)
+polygon(c(metab_smry$DOY, rev(metab_smry$DOY)),
+        na.approx(c(metab_smry$GPP.lower, rev(metab_smry$GPP.upper)),na.rm=F),
+        col=alpha("black",.3), border=NA)
+
+polygon(c(metab_smry$DOY, rev(metab_smry$DOY)),
+        na.approx(c(metab_smry$ER.25, rev(metab_smry$ER.75)),na.rm=F),
+        col=alpha("black",.5), border=NA)
+polygon(c(metab_smry$DOY, rev(metab_smry$DOY)),
+        na.approx(c(metab_smry$ER.lower, rev(metab_smry$ER.upper)),na.rm=F),
+        col=alpha("black",.3), border=NA)
+
 
 cols <- colorRampPalette(c("grey60", "grey25"))(6)
 for(i in 1:6){
