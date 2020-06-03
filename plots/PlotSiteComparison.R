@@ -8,7 +8,9 @@ library(zoo)
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism")
 
 alldat <- readRDS("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/data/streampulse/gapPhilled_data.rds")
-SP_models<- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/data/streampulse/all_daily_model_results.csv")
+NHC_model<- readRDS("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/data/streampulse/metabolism/NHC_modeled.rds")$metab
+NHC_model$year<-(as.numeric(format(NHC_model$date, "%Y")))
+NHC_model<-NHC_model[-which(NHC_model$year==2016),]
 
 alldat[!is.na(alldat$GPP_filled)& alldat$GPP_filled<0,"GPP"]<-NA
 alldat[!is.na(alldat$ER_filled)& alldat$ER_filled>0,"ER"]<-NA
@@ -29,12 +31,10 @@ metab_filled <- read_csv("data/metabolism/filled_NHC_sites_metabolism.csv")
 sites <- c("UNHC","PWC", "WBP","WB","CBP","PM","NHC")
 
 # compile NHC and UNHC data
-NHC_old <- alldat[alldat$sitecode=="NC_NHC",]%>% 
-  select(date=Date, year=Year, DOY=DOY,GPP=GPP_filled, ER=ER_filled,
-         K600=K600, discharge.m3s=discharge)
-NHC_old <- NHC_old[-c(1:366),]
+NHC_model <- select(NHC_model,  -site)
+NHC_model$DOY <- as.numeric(format(NHC_model$date, "%j"))
 NHC_new <- metab_ordered[metab_ordered$site=="NHC"&metab_ordered$year==2020,]
-NHC<- bind_rows(NHC_old, NHC_new)
+NHC<- bind_rows(NHC_model, NHC_new)
 NHC_smry <- group_by(NHC, DOY) %>%
   summarize(GPP_m=mean(GPP, na.rm=T),
             GPP.75=quantile(GPP, .75, na.rm = T),
@@ -42,20 +42,26 @@ NHC_smry <- group_by(NHC, DOY) %>%
             ER_m=mean(ER, na.rm=T),
             ER.75=quantile(ER, .75, na.rm = T),
             ER.25=quantile(ER, .25, na.rm=T),
-            GPP.upper=quantile(GPP, 1, na.rm = T),
-            GPP.lower=quantile(GPP, 0, na.rm=T),
-            ER.upper=quantile(ER, 1, na.rm = T),
-            ER.lower=quantile(ER, 0, na.rm=T),
+            GPP.upper=max(GPP, na.rm = T),
+            GPP.lower=min(GPP, na.rm=T),
+            ER.upper=max(ER, na.rm = T),
+            ER.lower=min(ER, na.rm=T),
             K600=median(K600, na.rm=T))
 
+NHC_smry$GPP.lower[which(is.infinite(NHC_smry$GPP.lower))]<- NA
+NHC_smry$GPP.upper[which(is.infinite(NHC_smry$GPP.upper))]<- NA
+NHC_smry$ER.lower[which(is.infinite(NHC_smry$ER.lower))]<- NA
+NHC_smry$ER.upper[which(is.infinite(NHC_smry$ER.upper))]<- NA
 
-UNHC_old <-alldat[alldat$sitecode=="NC_UNHC",]%>% 
-  select(date=Date, year=Year, DOY=DOY,GPP=GPP_filled, ER=ER_filled,
-         K600=K600, discharge.m3s=discharge)
-UNHC_old <- UNHC_old[-(1:200),]
 
+UNHC_sp <- SP_models[SP_models$site=="UNHC",]%>% 
+  select(-region, -site, -valid_day, -warnings, -errors)
+UNHC_sp$date <- as.Date(UNHC_sp$date)
+UNHC_sp$DOY <- as.numeric(format(UNHC_sp$date, "%j"))
+UNHC_sp<- select(UNHC_sp,-date)
 UNHC_new <- metab_ordered[metab_ordered$site=="UNHC"&metab_ordered$year==2020,]
-UNHC<- bind_rows(UNHC_old, UNHC_new)
+UNHC_new <- select(UNHC_new, -date)
+UNHC<- bind_rows(UNHC_sp, UNHC_new)
 UNHC_smry <- group_by(UNHC, DOY) %>%
   summarize(GPP_m=mean(GPP, na.rm=T),
           GPP.75=quantile(GPP, .75, na.rm = T),
@@ -77,20 +83,25 @@ metab_smry <- group_by(metab_ordered, DOY) %>%
             ER_m=mean(ER, na.rm=T),
             ER.75=quantile(ER, .75, na.rm = T),
             ER.25=quantile(ER, .25, na.rm=T),
-            GPP.upper=quantile(GPP, 1, na.rm = T),
-            GPP.lower=quantile(GPP, 0, na.rm=T),
-            ER.upper=quantile(ER, 1, na.rm = T),
-            ER.lower=quantile(ER, 0, na.rm=T),
+            GPP.upper=max(GPP, na.rm = T),
+            GPP.lower=min(GPP, na.rm=T),
+            ER.upper=max(ER, na.rm = T),
+            ER.lower=min(ER, na.rm=T),
             K600=median(K600, na.rm=T))
+
+metab_smry$GPP.lower[which(is.infinite(metab_smry$GPP.lower))]<- NA
+metab_smry$GPP.upper[which(is.infinite(metab_smry$GPP.upper))]<- NA
+metab_smry$ER.lower[which(is.infinite(metab_smry$ER.lower))]<- NA
+metab_smry$ER.upper[which(is.infinite(metab_smry$ER.upper))]<- NA
 
 #############################################################################
 # metabolism comparison to all SP sites
 
-png("figures/metabolism_comparison_allSPdata.png", width=700, height=320)
+png("figures/metabolism_comparison_allSPdata_NHCmodelrun.png", width=550, height=320)
 
-  par(mfrow = c(1,3), mar=c(0,1,0,0), oma=c(5,5,2,2))
+  par(mfrow = c(1,2), mar=c(0,1,0,0), oma=c(5,5,2,2))
   
-  ylims=c(-18, 10)
+  ylims=c(-12, 5)
   
   # between site comparison
   plot(smry$DOY, smry$GPP, ylab='', yaxs='i', type='n',
@@ -102,33 +113,31 @@ png("figures/metabolism_comparison_allSPdata.png", width=700, height=320)
           y=c(smry$ER.lower, rev(smry$ER.upper)),
           border=NA, col=alpha('sienna', alpha=.5))
   axis(2, las=2, line=0, xpd=NA, tck=-.02, labels=FALSE,
-       at=round(seq(ylims[1],ylims[2], by=3), 1))
+       at=round(seq(-10,ylims[2], by=2), 1))
   axis(2, las=2, line=-0.5, xpd=NA, tcl=0, col='transparent',
-       at=round(seq(ylims[1], ylims[2], by=3), 1),)
+       at=round(seq(-10, ylims[2], by=2), 1),)
   abline(h=0, lty=1, lwd=1)
   mtext(expression(paste("g O"[2]~"m"^"-2"~" d"^"-1")), side=2, line=2.5)
-  mtext('DOY', side=1, line=2, font=2)
+  mtext('day of year', side=1, line=-3, font=1)
   
+  # polygon(c(metab_smry$DOY, rev(metab_smry$DOY)),
+  #         na.approx(c(metab_smry$GPP.25, rev(metab_smry$GPP.75)),na.rm=F),
+  #         col=alpha("black",.5), border=NA)
   polygon(c(metab_smry$DOY, rev(metab_smry$DOY)),
-          na.approx(c(metab_smry$GPP.25, rev(metab_smry$GPP.75)),na.rm=F),
+          y=c(metab_smry$GPP.lower[1], rollmean(na.approx(c(metab_smry$GPP.lower, rev(metab_smry$GPP.upper)),na.rm=F),3), metab_smry$GPP.upper[1]),
           col=alpha("black",.5), border=NA)
-  polygon(c(metab_smry$DOY, rev(metab_smry$DOY)),
-          na.approx(c(metab_smry$GPP.lower, rev(metab_smry$GPP.upper)),na.rm=F),
-          col=alpha("black",.3), border=NA)
   
-  polygon(c(metab_smry$DOY, rev(metab_smry$DOY)),
-          na.approx(c(metab_smry$ER.25, rev(metab_smry$ER.75)),na.rm=F),
+  # polygon(c(metab_smry$DOY, rev(metab_smry$DOY)),
+  #         na.approx(c(metab_smry$ER.25, rev(metab_smry$ER.75)),na.rm=F),
+  #         col=alpha("black",.5), border=NA)
+  polygon(x=c(metab_smry$DOY, rev(metab_smry$DOY)),
+          y=c(metab_smry$ER.lower[1], rollmean(na.approx(c(metab_smry$ER.lower, rev(metab_smry$ER.upper)),na.rm=F),3), metab_smry$ER.upper[1]),
           col=alpha("black",.5), border=NA)
-  polygon(c(metab_smry$DOY, rev(metab_smry$DOY)),
-          na.approx(c(metab_smry$ER.lower, rev(metab_smry$ER.upper)),na.rm=F),
-          col=alpha("black",.3), border=NA)
   
   
-  mtext("Across sites (n=6)", 3, -2, font=4, col="grey30")
+  mtext("Intersite metabolism", 3,  line=.6, font=4, col="grey30")
+  mtext("(6 sites)", 3, cex=.8, font=4, line=-.2, col="grey30")
   
-  legend("bottomleft", legend=c("All Sites GPP (middle 50%)","All Sites ER (middle 50%)", "Local Sites (middle 50%)", "Local Sites (full range)"),
-         fill =c(alpha("forestgreen",.5), alpha("sienna", .5), alpha("black", .8), alpha("black",.3)), 
-         border=NA, bty="n", cex=1.5)
   # 
   # cols <- colorRampPalette(c("grey60", "grey25"))(6)
   # for(i in 1:6){
@@ -148,30 +157,37 @@ png("figures/metabolism_comparison_allSPdata.png", width=700, height=320)
           y=c(smry$ER.lower, rev(smry$ER.upper)),
           border=NA, col=alpha('sienna', alpha=.5))
   axis(2, las=2, line=0, xpd=NA, tck=-.02, labels=FALSE,
-       at=round(seq(ylims[1],ylims[2], by=2), 1))
+       at=round(seq(-10,ylims[2], by=2), 1))
   #axis(2, las=2, line=-0.5, xpd=NA, tcl=0, col='transparent',
   #     at=round(seq(ylims[1], ylims[2], by=2), 1))
   abline(h=0, lty=1, lwd=1)
   #mtext(expression(paste("g O"[2]~"m"^"-2"~" d"^"-1")), side=2, line=2.5)
-  mtext('DOY', side=1, line=2, font=2)
+  mtext('day of year', side=1, line=-3)
   
+  # polygon(c(NHC_smry$DOY, rev(NHC_smry$DOY)),
+  #         na.approx(c(NHC_smry$GPP.25, rev(NHC_smry$GPP.75)),na.rm=F),
+  #         col=alpha("black",.5), border=NA)
   polygon(c(NHC_smry$DOY, rev(NHC_smry$DOY)),
-          na.approx(c(NHC_smry$GPP.25, rev(NHC_smry$GPP.75)),na.rm=F),
+          c(NHC_smry$GPP.lower[1], rollmean(na.approx(c(NHC_smry$GPP.lower, rev(NHC_smry$GPP.upper)),na.rm=F),3), NHC_smry$GPP.upper[1]),
           col=alpha("black",.5), border=NA)
-  polygon(c(NHC_smry$DOY, rev(NHC_smry$DOY)),
-          na.approx(c(NHC_smry$GPP.lower, rev(NHC_smry$GPP.upper)),na.rm=F),
-          col=alpha("black",.3), border=NA)
   
+  # polygon(c(NHC_smry$DOY, rev(NHC_smry$DOY)),
+  #         na.approx(c(NHC_smry$ER.25, rev(NHC_smry$ER.75)),na.rm=F),
+  #         col=alpha("black",.5), border=NA)
   polygon(c(NHC_smry$DOY, rev(NHC_smry$DOY)),
-          na.approx(c(NHC_smry$ER.25, rev(NHC_smry$ER.75)),na.rm=F),
+          y=c(NHC_smry$ER.lower[1], rollmean(na.approx(c(NHC_smry$ER.lower, rev(NHC_smry$ER.upper)),na.rm=F),3), NHC_smry$ER.upper[1]),
           col=alpha("black",.5), border=NA)
-  polygon(c(NHC_smry$DOY, rev(NHC_smry$DOY)),
-          na.approx(c(NHC_smry$ER.lower, rev(NHC_smry$ER.upper)),na.rm=F),
-          col=alpha("black",.3), border=NA)
   
-  mtext("NHC interannual (n=4)", 3, -2, font=4, col="grey30")
+  mtext("Interannual metabolism", 3,  line=.6, font=4, col="grey30")
+  mtext("(3 years)", 3, cex=.8, font=4, line=-.2, col="grey30")
   
   
+  par(new=T, mfrow=c(1,1), mar=c(0,0,0,0), oma=c(1,0,0,0))
+  plot(1,1,xaxt="n", yaxt="n",xlab='',ylab="", type="n", bty="n")
+   legend("bottom", legend=c("All Sites GPP (middle 50%)","All Sites ER (middle 50%)", "Local Sites (full range)"),
+         fill =c(alpha("forestgreen",.5), alpha("sienna", .5), alpha("black",.5)), 
+         border=NA, bty="n", cex=1, xpd=NA)
+ 
   #Interannual variation
   plot(smry$DOY, smry$GPP, ylab='', yaxs='i', type='n',
        bty='n', lwd=4, xlab='', ylim=ylims, xaxs='i', xaxt='n', yaxt='n')

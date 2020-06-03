@@ -3,9 +3,9 @@
 #modified from Audrey's code
 #Created 5/14/2020
 #===============================================================================
-# library(devtools)
- devtools::install_github("psavoy/StreamLightUtils")
- devtools::install_github("psavoy/StreamLight")
+ # library(devtools)
+ # devtools::install_github("psavoy/StreamLightUtils")
+ # devtools::install_github("psavoy/StreamLight", auth_token = "7a3e9b10f997aeada28437a6ec760bff3a807a2e") 
 library(StreamLight)
 library(StreamLightUtils)
 library(dplyr)

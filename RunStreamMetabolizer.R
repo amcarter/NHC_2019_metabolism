@@ -24,7 +24,7 @@ all_data <- data.frame()
 all_metab <- data.frame()
 all_specs <- data.frame()
 
-for(i in 1:length(filelist)){
+for(i in 2:length(filelist)){
   dat <- read_csv(paste0("raw/",filelist[i],"processed.csv"))
   # set nodes for stream metabolizer to bin discharge around
   Qrange <- c(min(log(dat$discharge), na.rm=T),quantile(log(dat$discharge), .98, na.rm=T))
@@ -33,29 +33,29 @@ for(i in 1:length(filelist)){
   #fit metab model
   mm <- metab(bayes_specs, data=dat)
 
-  data_daily <- mod@data_daily %>% select(date, discharge.m3s=discharge.daily)
-  K600 <- mod@fit$daily  %>% select(date, K600=K600_daily_50pct, K600.lower=K600_daily_2.5pct, K600.upper=K600_daily_97.5pct)
+  data_daily <- mm@data_daily %>% select(date, discharge.m3s=discharge.daily)
+  K600 <- mm@fit$daily  %>% select(date, K600=K600_daily_50pct, K600.lower=K600_daily_2.5pct, K600.upper=K600_daily_97.5pct)
     data_daily <- left_join(data_daily, K600, by="date")
-    metab <- predict_metab(mod)
+    metab <- predict_metab(mm)
     metab <- left_join(metab, data_daily, by="date")
     metab$site <- sitename
     all_metab <- rbind(all_metab, metab)
 
-    data <- predict_DO(mod)
+    data <- predict_DO(mm)
     data$site <- sitename
-    all_data <- rbind(all_data, data)
+    all_data <- rbind(all_data, data) 
     
-    mod_specs<- get_specs(mod)
-    mod_specs$K600 <- exp(get_fit(mod)$KQ_binned$lnK600_lnQ_nodes_50pct)
-    mod_specs$K600.lower <- exp(get_fit(mod)$KQ_binned$lnK600_lnQ_nodes_2.5pct)
-    mod_specs$K600.upper <- exp(get_fit(mod)$KQ_binned$lnK600_lnQ_nodes_97.5pct)
+    mod_specs<- get_specs(mm)
+    mod_specs$K600 <- exp(get_fit(mm)$KQ_binned$lnK600_lnQ_nodes_50pct)
+    mod_specs$K600.lower <- exp(get_fit(mm)$KQ_binned$lnK600_lnQ_nodes_2.5pct)
+    mod_specs$K600.upper <- exp(get_fit(mm)$KQ_binned$lnK600_lnQ_nodes_97.5pct)
     
     filter_vec = names(mod_specs) %in% c("K600_lnQ_nodes_centers", "K600", "K600.upper", "K600.lower")
     QvsK600 <- as.data.frame(mod_specs[filter_vec])
     QvsK600$site <- sitename
     all_specs<- rbind(all_specs, QvsK600)
     
-    metab_dat <- list(data=data, metab=metab, specs=specs)
+    metab_dat <- list(data=data, metab=metab, specs=QvsK600)
     
     saveRDS(metab_dat, paste0("metabolism/", filelist[i],".rds"))
     
