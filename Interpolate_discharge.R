@@ -30,13 +30,13 @@ sites <- sites[-c(8,9),] # get rid of MC751 and mud, they are not along same con
 
 
 # read in data from SP portal for NHC and UNHC to get discharge
-NHC_dat <- request_data("NC_NHC",  variables=c("AirPres_kPa", "WaterPres_kPa", "WaterTemp_C"))
+NHC_dat <- request_data("NC_NHC",  variables=c("AirPres_kPa", "AirTemp_C","WaterPres_kPa", "WaterTemp_C"))
 
 NHC <- NHC_dat$data
 NHC$value[NHC$flagtype=="Bad Data"|NHC$flagtype=="Questionable"]<- NA
 NHC <- NHC %>% select(DateTime_UTC, value, variable)%>%
   pivot_wider(names_from=variable, values_from=value) %>%
-  select(DateTime_UTC, pressure_kPa=WaterPres_kPa, temp = WaterTemp_C, AirPres_kPa)
+  select(DateTime_UTC, pressure_kPa=WaterPres_kPa, temp = WaterTemp_C, AirTemp_C, AirPres_kPa)
 
 # remove NHC out of water pressure values (all below 103 from looking at graph)
 NHC$pressure_kPa[which(NHC$pressure_kPa<102)]<-NA
@@ -47,12 +47,14 @@ NOAA_airpres <- StreamPULSE:::FindandCollect_airpres(sites$latitude[1], sites$lo
                                      ymd_hms("2016-07-12 02:00:00"), 
                                      ymd_hms("2020-01-01 05:00:00"))
 
-NHC <- full_join(NHC, NOAA_airpres[,1:2], by="DateTime_UTC")
+NHC <- full_join(NHC, NOAA_airpres, by="DateTime_UTC")
 
 NHC[which(is.na(NHC$AirPres_kPa)),"AirPres_kPa"]<- NHC[which(is.na(NHC$AirPres_kPa)),"air_kPa"]
+NHC[which(is.na(NHC$AirTemp_C)),"AirTemp_C"]<- NHC[which(is.na(NHC$AirTemp_C)),"air_temp"]
+
 NHC <- select(NHC, -air_kPa, -air_temp)
 
-UNHC_dat <- request_data("NC_UNHC",  variables=c("AirPres_kPa", "WaterPres_kPa", "WaterTemp_C"))
+UNHC_dat <- request_data("NC_UNHC",  variables=c("WaterPres_kPa", "WaterTemp_C"))
 UNHC <- UNHC_dat$data
 UNHC$value[UNHC$flagtype=="Bad Data"|UNHC$flagtype=="Questionable"]<- NA
 UNHC <- UNHC %>% select(DateTime_UTC, value, variable)%>%
@@ -101,7 +103,7 @@ UNHC$NHC_Q_cms <- (UNHC$level_m/a.NHC)^(1/b.NHC)
 UNHC$UNHC_Q_cms <- (UNHC$U.level_m/a.UNHC)^(1/b.UNHC)
 
 
-Qdat <- UNHC %>% select(DateTime_UTC, AirPres_kPa, NHC_Q_cms, UNHC_Q_cms)
+Qdat <- UNHC %>% select(DateTime_UTC, AirPres_kPa, AirTemp_C,NHC_Q_cms, UNHC_Q_cms)
 
 Qdat$NHC_Q_cms <- na.approx(Qdat$NHC_Q_cms, na.rm=FALSE, maxgap=12)
 Qdat$UNHC_Q_cms <- na.approx(Qdat$UNHC_Q_cms, na.rm=FALSE, maxgap=12)
@@ -176,6 +178,11 @@ for(i in 1:nrow(NHC_gaps)){
 }
 
 # snap UNHC gaps
+# Don't allow interpolated discharge to be lower than NHC min flow
+UNHCmin <- min(Qdat$UNHC_Q_cms, na.rm=T)
+m<- min(Qdat$predNHC_Q, na.rm=T)
+t <- which(Qdat$predNHC_Q==m)
+
 for(i in 1:nrow(UNHC_gaps)){
   a<- UNHC_gaps[i,]$starts
   b <- UNHC_gaps[i,]$stops
@@ -186,8 +193,8 @@ for(i in 1:nrow(UNHC_gaps)){
     enddiff <- Qdat$UNHC_Q_cms[b+1] - Qdat$predUNHC_Q[b]
   }
   if(is.na(startdiff)||is.na(enddiff)) next
-  
   diffQ <- seq(startdiff, enddiff, length.out=NHC_gaps[i,]$lengths)
+  
   Qdat$UNHC_modQ_cms[a:b]<- Qdat$predUNHC_Q[a:b]+diffQ
   
 }
@@ -199,7 +206,7 @@ points(Qdat$DateTime_UTC[Qdat$notes=="modeled NHC Q"], Qdat$NHC_modQ_cms[Qdat$no
 plot(Qdat$DateTime_UTC, Qdat$UNHC_modQ_cms, log="y", main = "UNHC")
 points(Qdat$DateTime_UTC[Qdat$notes=="modeled UNHC Q"], Qdat$UNHC_modQ_cms[Qdat$notes=="modeled UNHC Q"], col = "red")
 
-NHC_UNHC_Q_interp <- select(Qdat, DateTime_UTC, AirPres_kPa, NHC_Q_cms,UNHC_Q_cms, notes)
+NHC_UNHC_Q_interp <- select(Qdat, DateTime_UTC, AirPres_kPa, AirTemp_C,NHC_Q_cms,UNHC_Q_cms, notes)
 
 write_csv(NHC_UNHC_Q_interp, "C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/data/streampulse/raw/NHC_UNHC_Q_dat.csv")
 #######################################################################################################################
@@ -219,5 +226,5 @@ for(i in which(!is.na(newQdat$NHC.Q))){
   newQdat[i,3:7] <-Qnew
 }
 
-newQdat <- full_join(newQdat, Qdat[,c(1,2,7)], by="DateTime_UTC")
+newQdat <- full_join(newQdat, Qdat[,c(1,2,3,8)], by="DateTime_UTC")
 write_csv(newQdat, path = "data/siteData/interpolatedQ_allsites.csv")

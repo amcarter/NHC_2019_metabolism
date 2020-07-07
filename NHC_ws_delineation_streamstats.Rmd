@@ -13,6 +13,8 @@ vignette: >
 # library(devtools)
 # install_github('markwh/streamstats')
 library(streamstats)
+library(nhdplusTools)
+library(sf)
 library(dplyr)
 ```
 
@@ -20,9 +22,34 @@ Delineate watersheds to each sample point and USGS gage in NHC watershed.
 Calculate watershed area and percent ISC.
 
 ```{r}
-sites <- read.csv("../data/siteData/NHCsite_coordinates.csv", header=T, stringsAsFactors = F)
+setwd(metab_projdir)
+sites <- read.csv("data/siteData/NHCsite_coordinates.csv", header=T, stringsAsFactors = F)
 sites$ws_area.km2 <- NA
 sites$isc.percent <- NA
+```
+
+```{r}
+#pair with NHD flowlines
+sites_sf <- sites[,1:4] %>% 
+  st_as_sf(coords=c("longitude","latitude"),remove=F, crs=4326)
+
+cur_nhd <- st_read(paste0(hypox_projdir, "/NHC_map/NHC_NHD_subset.gpkg")) 
+
+
+# attach comids to each sample station
+comid_points<- rep(NA, nrow(sites))
+for(i in 1:nrow(sites_sf)){
+  comid_points[i]<- discover_nhdplus_id(sites_sf[i,])  
+}
+
+sites$comid <- comid_points
+
+nhd_dat <- cur_nhd[cur_nhd$comid %in% comid_points,] %>% 
+  select(comid, slope)
+sites <- left_join(sites, nhd_dat, by="comid")%>%
+  select(-geom)
+
+
 
 ```
 
@@ -36,7 +63,7 @@ Here, `crs` is the coordinate reference system number (ESPSG spatial reference c
 To see what it returned, the `leafletWatershed` function gives a simple interactive map.
 
 ```{r compute_ws_areas}
-setTimeout(600)
+setTimeout(2000)
 for(i in 1:nrow(sites)){
   dat <- sites[i,]
   WS <- delineateWatershed(xlocation = dat$longitude, ylocation = dat$latitude, crs = 4326, 
@@ -51,6 +78,8 @@ for(i in 1:nrow(sites)){
   sites$isc.percent[i]<- isc
 }
 
-write.csv(sites, file = "../data/siteData/NHCsite_watersheds.csv", row.names=F)
+
+
+write.csv(sites, file = "/data/siteData/NHCsite_watersheds.csv", row.names=F)
 ```
 
