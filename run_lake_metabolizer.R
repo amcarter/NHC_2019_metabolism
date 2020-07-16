@@ -1,5 +1,14 @@
-#figure generation code for a metabolism example
+#########################################################
+# Run lake metabolizer
+# data from NHC 2019-2020
+# A Carter
+# 2020-07-03
+##
+
+#install.packages("LakeMetabolizer")
+#install.packages('R2jags')
 library(LakeMetabolizer)
+
 library(readr)
 setwd(metab_projdir)
 source("code/lake_metabolizer_helpers.R")
