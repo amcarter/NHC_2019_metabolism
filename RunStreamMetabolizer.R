@@ -10,11 +10,11 @@ library(streamMetabolizer)
 library(dplyr)
 library(readr)
 
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/data/streampulse")
+setwd(metab_projdir)
 
 # load RDS from model output: discharge
-
-filelist <- c("NHC_2016", "NHC_2017","NHC_2018","NHC_2019")
+nreg<- read_csv("data/siteData/KQ_nightreg_priors.csv")
+filelist <- list.files("data/metabolism/processed")
 bayes_name <- mm_name(type="bayes", pool_K600="binned", err_obs_iid = TRUE,
                       err_proc_iid = TRUE, err_proc_acor = FALSE)
 bayes_specs <- specs(bayes_name)
@@ -24,11 +24,19 @@ all_data <- data.frame()
 all_metab <- data.frame()
 all_specs <- data.frame()
 
-for(i in 2:length(filelist)){
-  dat <- read_csv(paste0("raw/",filelist[i],"processed.csv"))
+for(i in 1:length(filelist)){
+  dat <- read_csv(paste0("data/metabolism/processed/",filelist[i]))
+  dat <- select(dat, solar.time, DO.obs=DO_mgL, DO.sat, depth, temp.water=WaterTemp_C, light, discharge=Discharge_m3s)
+  site <- substr(filelist[i],1,(nchar(filelist[i])-4))
   # set nodes for stream metabolizer to bin discharge around
-  Qrange <- c(min(log(dat$discharge), na.rm=T),quantile(log(dat$discharge), .98, na.rm=T))
-  bayes_specs$K600_lnQ_nodes_centers <- seq(Qrange[1], Qrange[2], length=7)
+  #Qrange <- c(min(log(dat$discharge), na.rm=T),quantile(log(dat$discharge), .98, na.rm=T))
+  #bayes_specs$K600_lnQ_nodes_centers <- seq(Qrange[1], Qrange[2], length=7)
+  
+  #get nodes from KQ relationships determined from nighttime regression
+  KQ <- nreg[nreg$site==site,]
+  bayes_specs$K600_lnQ_nodes_centers <- KQ$lnQ_nodes
+  bayes_specs$K600_lnQ_nodes_meanlog <- log(KQ$K600_lnQ_nodes)
+  bayes_specs$K600_lnQ_nodes_sdlog <- sqrt(abs(log(KQ$K600_lnQ_nodes_se)))
   
   #fit metab model
   mm <- metab(bayes_specs, data=dat)
@@ -57,7 +65,7 @@ for(i in 2:length(filelist)){
     
     metab_dat <- list(data=data, metab=metab, specs=QvsK600)
     
-    saveRDS(metab_dat, paste0("metabolism/", filelist[i],".rds"))
+   # saveRDS(metab_dat, paste0("metabolism/", filelist[i],".rds"))
     
 }
 

@@ -59,6 +59,12 @@ for(i in 1:length(filelist)){
 
   
   dat <- select(dat, -DateTime_EST)
+  date_range <- range(dat$solar.time, na.rm=T)
+  ds <- data.frame(solar.time = seq(date_range[1],date_range[2],by=15*60))
+  dup <- which(duplicated(dat$solar.time))
+  
+  dat <- left_join(ds, dat[-dup,])
+  
   write_csv(dat, paste0("data/metabolism/processed/",sitename,".csv" ))
 }
 
