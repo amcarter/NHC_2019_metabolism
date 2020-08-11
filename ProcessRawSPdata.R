@@ -7,7 +7,7 @@
 library(streamMetabolizer)
 library(lubridate)
 library(tidyverse)
-
+setwd(metab_projdir)
 sites <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/siteData/NHCsite_metadata.csv")
 Qdat <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/siteData/interpolatedQ_allsites.csv")
 filelist <- list.files("data/metabolism/raw")

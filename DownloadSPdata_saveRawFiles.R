@@ -35,8 +35,8 @@ dateRange <- c(min(sites[sites$type=="synoptic"&sites$sitecode!="MC751",]$startd
                max(sites[sites$type=="synoptic"&sites$sitecode!="MC751",]$enddate.UTC))
 sites[sites$type=="core",]$startdate.UTC <- dateRange[1]
 sites[sites$type=="core",]$enddate.UTC <- dateRange[2]
-sites$startdate.UTC <- ymd_hms(sites$startdate.UTC)
-sites$enddate.UTC<- ymd_hms(sites$enddate.UTC)
+sites$startdate.UTC <- as.POSIXct(sites$startdate.UTC, format="%m/%d/%Y %H:%M")
+sites$enddate.UTC<- as.POSIXct(sites$enddate.UTC, format="%m/%d/%Y %H:%M")
 # List of all the variables at site:
 for(i in 1:nrow(sites)){
   vars <- as.character(unlist(query_available_data("NC",sites[i,]$sitecode)$variables))

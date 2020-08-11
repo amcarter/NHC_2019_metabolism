@@ -37,7 +37,7 @@ for(i in 1:length(filelist)){
   bayes_specs$K600_lnQ_nodes_centers <- KQ$lnQ_nodes
   bayes_specs$K600_lnQ_nodes_meanlog <- log(KQ$K600_lnQ_nodes)
   bayes_specs$K600_lnQ_nodes_sdlog <- sqrt(abs(log(KQ$K600_lnQ_nodes_se)))
-  
+  bayes_specs$K600_daily_sigma_sigma <- .15 
   #fit metab model
   mm <- metab(bayes_specs, data=dat)
 

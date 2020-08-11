@@ -56,13 +56,13 @@ nightreg<-function(o2file, date){
   
   #calculate regression and plot
   nreg<-lm(deltaO2~satdef)
-  #plot(satdef,deltaO2, main=date)
-  #abline(nreg)
+  plot(satdef,deltaO2, main=date)
+  abline(nreg)
   
   coeff<-coef(nreg)
   ci <- confint(nreg, "satdef", 0.95)[2]-confint(nreg, "satdef", 0.95)[1]
   out<-list(coeff, 
-            K600=K600fromO2(mean(temp), coeff[2]), 
+            K600=K600fromO2(mean(temp, na.rm=T), coeff[2]), 
             Q_m3s=Q,
             n=length(satdef), 
             ci = ci,
@@ -71,7 +71,7 @@ nightreg<-function(o2file, date){
   out
 }
 
-site <- "UNHC"
+site <- "WB"
 dat <- read_csv(paste0("data/metabolism/processed/",site,".csv"), guess_max = 100000)
 dat <- select(dat, -flagtype, -flagcomment)
 
