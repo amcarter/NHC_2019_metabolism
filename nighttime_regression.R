@@ -71,7 +71,7 @@ nightreg<-function(o2file, date){
   out
 }
 
-site <- "WB"
+site <- "NHC"
 dat <- read_csv(paste0("data/metabolism/processed/",site,".csv"), guess_max = 100000)
 dat <- select(dat, -flagtype, -flagcomment)
 
@@ -146,3 +146,5 @@ KQ_all <- bind_rows(KQ_all, KQ)
 rownames(KQ_all) <- NULL
 
 write_csv(KQ_all,"data/siteData/KQ_nightreg_priors.csv")
+
+write_csv(nightreg_results, "data/siteData/nightreg_NHC.csv")
