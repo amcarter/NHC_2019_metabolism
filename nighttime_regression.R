@@ -8,6 +8,7 @@ library(dplyr)
 library(streamMetabolizer)
 library(readr)
 library(mgcv)
+library(lubridate)
 
 setwd(metab_projdir)
 
@@ -56,8 +57,8 @@ nightreg<-function(o2file, date){
   
   #calculate regression and plot
   nreg<-lm(deltaO2~satdef)
-  plot(satdef,deltaO2, main=date)
-  abline(nreg)
+  # plot(satdef,deltaO2, main=date)
+  # abline(nreg)
   
   coeff<-coef(nreg)
   ci <- confint(nreg, "satdef", 0.95)[2]-confint(nreg, "satdef", 0.95)[1]
@@ -71,7 +72,7 @@ nightreg<-function(o2file, date){
   out
 }
 
-site <- "NHC"
+site <- "MC751"
 dat <- read_csv(paste0("data/metabolism/processed/",site,".csv"), guess_max = 100000)
 dat <- select(dat, -flagtype, -flagcomment)
 
@@ -108,7 +109,6 @@ nightreg_results <- nightreg_results %>%
                 r2_adj>0)
 #                p<0.1)
 
-
 #plot(log(nightreg_results$discharge_m3s), nightreg_results$K600, pch=20, cex=2*nightreg_results$r2_adj)
 # look at specific questionable points:
 #dd<-as.Date("2020-02-08")
@@ -125,7 +125,14 @@ nightreg_results$logQ <- log(nightreg_results$discharge_m3s)
 ss <- gam(K600 ~ s(logQ), data=nightreg_results)
 p<- predict(ss, newdata=Q, se.fit=TRUE)
 
-png(width=7, height=6, units='in', filename=paste0("figures/KQ_nightreg/",site,".png"), type='cairo', res=300)
+kk=predict(ss, newdata=data.frame(logQ=nightreg_results$logQ), se.fit=T)
+nightreg_results$K600.pred <- kk$fit
+nightreg_results$K600.se <- kk$se.fit
+
+
+write_csv(nightreg_results, paste0("data/gas_data/night_regression/nightreg_", site,".csv"))
+
+#png(width=7, height=6, units='in', filename=paste0("figures/KQ_nightreg/",site,".png"), type='cairo', res=300)
   plot(ss,axes=F, xlab = "log Q", ylab = "K600", main=site)
   with(nightreg_results, points(logQ, K600-mean(K600, na.rm=T), pch=20, col="grey70"))
   points(Q$logQ, p$fit-mean(nightreg_results$K600, na.rm=T), col="brown2", pch=19)
@@ -134,7 +141,7 @@ png(width=7, height=6, units='in', filename=paste0("figures/KQ_nightreg/",site,"
   plot(c(Q$logQ,Q$logQ), c((p$fit+2*p$se.fit),(p$fit-2*p$se.fit)),
      type="n", axes=F, ylab="", xlab="")
   axis(2)
-dev.off()
+#dev.off()
 # make a data frame of results
 KQ <- data.frame(site=site,
                  n_nreg = nrow(nightreg_results),
@@ -147,4 +154,3 @@ rownames(KQ_all) <- NULL
 
 write_csv(KQ_all,"data/siteData/KQ_nightreg_priors.csv")
 
-write_csv(nightreg_results, "data/siteData/nightreg_NHC.csv")

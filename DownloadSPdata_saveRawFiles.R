@@ -45,3 +45,9 @@ for(i in 1:nrow(sites)){
                                     as.character(as.Date(sites[i,]$enddate.UTC)),"_raw.csv"), row.names=F)
 }
 
+# specific MC751 download:
+sites <- sites[sites$sitename=="MC751",]
+vars <- as.character(unlist(query_available_data("NC", "MC751")$variables))
+sites$startdate.UTC <- as.POSIXct(sites$startdate.UTC, format="%m/%d/%Y %H:%M")
+sites$enddate.UTC<- as.POSIXct(sites$enddate.UTC, format="%m/%d/%Y %H:%M")
+dat <- request_data(sites$siteID, startdate=sites$startdate.UTC, enddate=(sites$enddate.UTC), variables=vars)
