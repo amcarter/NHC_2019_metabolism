@@ -1,0 +1,69 @@
+NHC data paper and Hall 50 years later 2019
+
+##Writing
+
+
+##Data
+-work up real sensor offsets based on NHC_YSI file
+-enter data from Q measurements along NHC
+-work up mesocosm data
+-work up DOC/TN data
+-get lachat ID sheet from 12/05 run to find sample names (look and see if these are in the DOC file)
+-find chem data from first longitudinal sampling
+
+## Lab work
+-run samples from NHC sites 12/2019-3/2020
+-run MC751 samples
+
+##DataAnalysis
+Discharge
+-Calculate Q for MC751
+-Calculate velocity/MRT from cross sections
+ - get stage at each site from LL
+
+GasFlux
+-Recalculate nighttime regression using RocherRos github
+-calculate gas flux: compare with bucket data?  
+-calculate gas slopes at each tp: what does this have to do with MC data?
+
+-cluster analysis of time raw timeseries.
+-look at raw data discontinuities: 
+  does this differ systematically between gas and aqueous solutes?
+-NMDS/PCA of solute data
+-make 3D plots of raw data:
+	x:DOY, Q, temp; Y:[solute]; z:river distance
+- make CQ plots of everything for each site superimposed
+
+Metabolism
+-Look at model results, compare to Streampulse package output
+-Look over model fits, rerun with different K prior?
+-Rerun SM with hand pooling of K measurements
+
+##Plots
+
+
+##Field
+-measure pool dimensions
+-measure travel time between sensors
+
+##General
+Add table for mesocosm data
+
+##Hall 50 years
+-list of potential takehomes (1 pom)
+
+5/7/2020
+
+	Update discharge interpolation 
+	find gaps in Q data
+	fill with lines to snap interp dat
+	deal with special cases
+
+	Run stream metabolizer for all the sites
+	save smaller version of RDS output
+	code DYgraphs for comparing DO meas vs modeled
+compare DO modeled vs measured for all days
+
+
+
+

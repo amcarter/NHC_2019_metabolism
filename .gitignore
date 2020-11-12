@@ -1,4 +1,4 @@
-*.csv
-*.rds
+figures/
+data/
 *.gpkg
 .Rhistory
