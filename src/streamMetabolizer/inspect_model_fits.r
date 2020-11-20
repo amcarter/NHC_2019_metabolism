@@ -1,0 +1,123 @@
+# assess the fit and K values for SM metabolism model runs
+# 11/17/2020
+
+library(zoo)
+setwd('C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data')
+
+
+plot_rhats <- function(fit){
+  rh <- get_fit(fit)$daily %>%
+    select(date, ends_with('Rhat'))
+  ylim = range(c(rh$K600_daily_Rhat, rh$GPP_daily_Rhat, rh$ER_daily_Rhat, 1.05), 
+               na.rm = T)
+  plot(x = rh$date, y = rh$K600_daily_Rhat, 
+       ylab = "rhat (convergence metric)", xlab = "date",
+       type = "l", lwd = 1.5, ylim = ylim)        
+  lines(rh$date, rh$GPP_daily_Rhat, col = "forestgreen", lwd = 1.5)
+  lines(rh$date, rh$ER_daily_Rhat, col = "sienna", lwd = 1.5)
+  abline(h = 1.05, lty = 2, col = "red")
+  mtext("Rhat below 1.05 is good", 3, 0, adj = 0)
+  legend("topleft", 
+         legend = c("K600", "GPP", "ER"),
+         col = c(1, "forestgreen", "sienna"),
+         lty = 1, bty = "n", lwd = 1.5)
+}
+
+
+plot_binning <- function(fit){
+  mm_fit <- get_fit(fit)
+  
+  SM_output <- mm_fit$daily
+  SM_KQbin <-  mm_fit$KQ_binned
+  SM_day <- get_data_daily(fit)
+  SM_specs <- get_specs(fit)
+  
+  day <- data.frame(SM_day$discharge.daily, 
+                    SM_output$K600_daily_50pct, 
+                    SM_output$GPP_50pct,
+                    SM_output$K600_daily_Rhat,
+                    rep('daily', dim(SM_output)[1]))
+  
+  colnames(day)<-c('Q', 'K600', 'GPP','Rhat', 'Group')
+  
+  # gg<-ggplot(day, aes(x=log(Q), y = GPP, col=Rhat))+
+  #   geom_point() +
+  #   geom_hline(yintercept = 0.2)
+  
+  nodes<-data.frame(exp(SM_specs$K600_lnQ_nodes_centers), 
+                    exp(SM_KQbin$lnK600_lnQ_nodes_50pct),
+                    exp(SM_specs$K600_lnQ_nodes_meanlog))
+  colnames(nodes)<-c('Q', 'K600', 'K600_prior')
+  pm <- par()$mar
+  plot(log(day$Q), day$K600,
+       xlab = "logQ", ylab = "K600", 
+       col = "grey", pch = 19, cex = 1.5)
+  points(log(nodes$Q), nodes$K600, col = "brown3", pch = 19, cex = 1.5)
+  points(log(nodes$Q), nodes$K600_prior, col = "brown3", cex = 1.5)
+  par(new = T, mar = c(0,0,0,0))
+  plot(1,1, type = 'n', axes = FALSE, xlab = '', ylab = '')
+  legend("top", legend = c("daily", "prior", "posterior"),
+         col = c("grey", "brown3", "brown3"),
+         pch = c(19, 1, 19), cex = 1.5,  bty = 'n', ncol = 3)
+  par(mar = pm)
+}
+
+plot_KvER <- function(fit){
+  KvER <- get_fit(fit)
+  pcor <- round(cor(KvER$daily$K600_daily_mean, 
+                    KvER$daily$ER_daily_mean, 
+                    use = "na.or.complete"),2)
+  plot(KvER$daily$K600_daily_mean, KvER$daily$ER_daily_mean,
+       xlab = "K600 (/d)", ylab = "ER (gO2/m2/d)")
+  mtext(paste0("pearson's correlation = ", pcor),
+        side = 3, line = 0, adj = 1)
+}
+
+
+plot_metab <- function(fit, site, hall = NULL, ylim = NULL){
+  met <- predict_metab(fit)
+  yrange = range(c(met$GPP.upper, met$ER.lower), na.rm = T)
+  
+  if(!is.null(hall)){
+    hall <- hall[hall$site == site,]
+    yrange = range(c(yrange, hall$GPP_gO2m2d, hall$ER_gO2m2d))}
+  if(!is.null(ylim)){yrange = ylim}
+  
+  plot(met$date, met$GPP, 
+       type = "l", lwd = 2, col = "forestgreen",
+       ylim = yrange, xlab = "date", ylab = "gO2/m2/d")  
+  lines(met$date, met$ER, 
+        lwd = 2, col = "sienna")
+  polygon(na.approx(c(met$date, rev(met$date)), na.rm = F), 
+          na.approx(c(met$GPP.lower, rev(met$GPP.upper)), na.rm = F),
+          col = alpha("forestgreen", 0.4), border = NA)
+  polygon(na.approx(c(met$date, rev(met$date)), na.rm = F), 
+          na.approx(c(met$ER.lower, rev(met$ER.upper)), na.rm = F),
+          col = alpha("sienna", 0.4), border = NA)
+  abline(h = 0)
+  points(hall$date, hall$GPP_gO2m2d)
+  
+}
+
+ss <- data.frame(hall_site = c("Concrete", "Wood Bridge", "Blackwood"),
+                 site = c("CBP", "WB", "UNHC"))
+hall <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_table_15.csv") %>%
+  rename(hall_site = site) %>%
+  mutate(ER_gO2m2d = -ER_gO2m2d) %>%
+  left_join(ss) %>%
+  select(-hall_site)
+
+site <- "CBP"
+
+# Look at the metabolism predictions and fits for each year of data
+fit <- readRDS(paste0("metabolism/modeled/", site, "_nreg_v1.rds"))
+plot_metab_preds(predict_metab(fit))
+plot_binning(fit)
+plot_rhats(fit)
+plot_KvER(fit)
+
+plot_DO_preds(fit, style = "dygraphs", y_var = "conc")
+
+get_fit(fit)$overall %>%
+  select(ends_with('Rhat'))
+

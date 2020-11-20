@@ -60,7 +60,7 @@ for(i in 1:length(filelist)){
   
   pressure_Pa <- (dat$WaterPres_kPa-dat$AirPres_kPa)*1000
   dat$level_m <- sensor_offset + pressure_Pa/(998*9.8)
-
+  
   
   dat <- dat %>% 
     select(-DateTime_UTC, -AirPres_mbar, -AirPres_kPa, 
