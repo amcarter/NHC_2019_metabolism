@@ -65,7 +65,7 @@ for(i in 1:length(filelist)){
   dat <- dat %>% 
     select(-DateTime_UTC, -AirPres_mbar, -AirPres_kPa, 
            -AirTemp_C, -WaterPres_kPa) %>%
-    mutate(DO.obs = DO_mgL, 
+    rename(DO.obs = DO_mgL, 
            temp.water = WaterTemp_C, 
            discharge = discharge_m3s)
   
