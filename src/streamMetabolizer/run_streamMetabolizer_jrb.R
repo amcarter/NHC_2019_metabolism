@@ -38,7 +38,7 @@ NHC <- read_metdata("NHC")
 #   select(-year)
 
 PM <- read_metdata("PM")
-CBP <- read_metdata("CBP")
+CBP <- read_metdata("CBP_lvl")
 WB <- read_metdata("WB")
 WBP <- read_metdata("WBP")
 PWC <- read_metdata("PWC")
@@ -89,11 +89,11 @@ bayes_name_complete <- mm_name(type='bayes', pool_K600="normal_sdzero",
 
 
 kq_all <- read_csv("siteData/KQ_nightreg_priors.csv")
+kq_hall <- read_csv("siteData/KQ_hall_prior.csv")
 
 set_up_model <- function(dat, site, bayes_name,
                          version = "raymond", kq_all = NULL
                          ){
-    
   ## Set bayes specs
   bayes_specs <- specs(bayes_name)
   bayes_specs$keep_mcmcs <- FALSE
@@ -136,16 +136,24 @@ set_up_model <- function(dat, site, bayes_name,
       for(i in 1:low){
         kq <- bind_rows(kq[1], kq)}
     }
-    #delt <- meanlog - median(kq$lnK600_lnQ_nodes)
-    
+  
     bayes_specs$K600_lnQ_nodes_centers <- nodes
     bayes_specs$K600_lnQ_nodes_meanlog <- (kq$lnK600_lnQ_nodes)
     #bayes_specs$K600_lnQ_nodes_sdlog <- kq$lnK600_lnQ_nodes_sd
-    bayes_specs$K600_lnQ_nodes_sdlog <- rep(0.7, length(nodes))
+    bayes_specs$K600_lnQ_nodes_sdlog <- rep(0.01, length(nodes))
     
+  }
+  if(version == "hall"){
+    nodes <- kq_all %>%
+      filter(!is.na(nodes) & nodes >= Qrange[1] & nodes <= Qrange[2])
+    
+    bayes_specs$K600_lnQ_nodes_centers <- nodes$nodes
+    bayes_specs$K600_lnQ_nodes_meanlog <- log(nodes$K600)
+    bayes_specs$K600_lnQ_nodes_sdlog <- c(rep(0.7, nrow(nodes)))
   }
   ## Change sigma
   bayes_specs$K600_daily_sigma_sigma <- 0.05
+  
   return(bayes_specs)
 }
 
@@ -182,7 +190,7 @@ fit_nreg_sd7_ss05 <- metab(bayes_specs_nreg, data = nhc19)
 saveRDS(fit_nreg_sd7_ss05,"metabolism/modeled/fit_nhc19_nreg_sd7_ss05.rds")
 
 
-# Fixed K model
+# Fixed K model ####
 bayes_specs_fixedK <- set_up_model(nhc19, "NHC", bayes_name, "nreg", kq_all)
 prep_fake_Q <- function(dat, bayes_specs_fixedK){
   dat <- dat %>% 
@@ -223,6 +231,12 @@ bayes_specs_fixedK$K600_lnQ_nodediffs_sdlog <- 2
 fit_nreg_fixedK <- metab(bayes_specs_fixedK, data= dat) 
 saveRDS(fit_nreg_fixedK,"metabolism/modeled/fit_nhc19_fixedK2.rds")
 
+# Fixed K model with Hall K600
+bayes_specs_Hall <- set_up_model(CBP, "CBP", bayes_name, "hall", kq_hall)
+dat <- prep_fake_Q(CBP, bayes_specs_Hall)
+bayes_specs_Hall$K600_lnQ_nodes_centers <- 
+  seq(1:length(bayes_specs_Hall$K600_lnQ_nodes_centers))
+fit <- metab(bayes_specs_Hall, dat)
 load_inspect_fit <- function(filename){
   fit <- readRDS(paste0("metabolism/modeled/", filename))
   mm<-plot_metab_preds(predict_metab(fit))
