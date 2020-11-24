@@ -1,14 +1,10 @@
-######################
-## Model Metabolism ##
-######################
+## Model Metabolism #
+# Adapted from JRB's workflow
 # install.packages("streamMetabolizer", dependencies=TRUE, 
- 
 #                  repos=c("http://owi.usgs.gov/R","https://cran.rstudio.com"))
 # update.packages(oldPkgs=c("streamMetabolizer","unitted"), dependencies=TRUE, 
 #                 repos=c("http://owi.usgs.gov/R", "https://cran.rstudio.com"))
 # devtools::install_github("USGS-R/streamMetabolizer", ref="develop")
-devtools::find_rtools()
-Sys.getenv('PATH')
 
 library(rstan)
 library(tidyverse)
@@ -16,14 +12,13 @@ library(ggplot2)
 library(streamMetabolizer)
 library(lubridate)
 library(dygraphs)
-library(imputeTS)
 # library(parallel)
 
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data")
 
+## Read in Data ####
 sites <- read_csv("siteData/NHCsite_metadata.csv")
 
-## Read in Data ####
 # select variables for metabolism
 read_metdata <- function(site){
   MP <- read_csv(paste0("metabolism/processed/", site, ".csv"), guess_max = 100000) %>%
@@ -44,8 +39,7 @@ WBP <- read_metdata("WBP")
 PWC <- read_metdata("PWC")
 UNHC <- read_metdata("UNHC")
 
-
-#Visualize the data #####
+# Visualize the data #####
 # dat <- nhc19
 # 
 # dat %>% unitted::v() %>%
@@ -70,7 +64,7 @@ UNHC <- read_metdata("UNHC")
 #   scale_color_discrete('variable')
 
 
-## Model the data #####
+## Set up Model Specs #####
 ## Figure out range of log of daily discharge and reset parameters accordingly
 ## Recalc potential mean based on Raymond relationship
 #K600_daily_meanlog_meanlog = 4.77 + 0.55*log(slope) + (-0.52*log(depth))
@@ -158,9 +152,7 @@ set_up_model <- function(dat, site, bayes_name,
 }
 
 
-
-## Run Models ####
-# Kpriors ####
+# Run models with Kpriors ####
 # First, try several different priors for K
 
 # pooled raymond k600, default K600_sigma_sigma = 0.24, K600_sd = 0.7
@@ -231,12 +223,64 @@ bayes_specs_fixedK$K600_lnQ_nodediffs_sdlog <- 2
 fit_nreg_fixedK <- metab(bayes_specs_fixedK, data= dat) 
 saveRDS(fit_nreg_fixedK,"metabolism/modeled/fit_nhc19_fixedK2.rds")
 
-# Fixed K model with Hall K600
+# Fixed K model with Hall K600 ####
+# CBP 
 bayes_specs_Hall <- set_up_model(CBP, "CBP", bayes_name, "hall", kq_hall)
 dat <- prep_fake_Q(CBP, bayes_specs_Hall)
 bayes_specs_Hall$K600_lnQ_nodes_centers <- 
   seq(1:length(bayes_specs_Hall$K600_lnQ_nodes_centers))
 fit <- metab(bayes_specs_Hall, dat)
+saveRDS(fit, "metabolism/modeled/fit_cbp_fixed_hallK.rds")
+
+# PM 
+bayes_specs_Hall <- set_up_model(PM, "PM", bayes_name, "hall", kq_hall)
+dat <- prep_fake_Q(PM, bayes_specs_Hall)
+bayes_specs_Hall$K600_lnQ_nodes_centers <- 
+  seq(1:length(bayes_specs_Hall$K600_lnQ_nodes_centers))
+fit <- metab(bayes_specs_Hall, dat)
+saveRDS(fit, "metabolism/modeled/fit_pm_fixed_hallK.rds")
+
+# WB 
+bayes_specs_Hall <- set_up_model(WB, "WB", bayes_name, "hall", kq_hall)
+dat <- prep_fake_Q(WB, bayes_specs_Hall)
+bayes_specs_Hall$K600_lnQ_nodes_centers <- 
+  seq(1:length(bayes_specs_Hall$K600_lnQ_nodes_centers))
+fit <- metab(bayes_specs_Hall, dat)
+saveRDS(fit, "metabolism/modeled/fit_wb_fixed_hallK.rds")
+
+# WBP 
+bayes_specs_Hall <- set_up_model(WBP, "WBP", bayes_name, "hall", kq_hall)
+dat <- prep_fake_Q(WBP, bayes_specs_Hall)
+bayes_specs_Hall$K600_lnQ_nodes_centers <- 
+  seq(1:length(bayes_specs_Hall$K600_lnQ_nodes_centers))
+fit <- metab(bayes_specs_Hall, dat)
+saveRDS(fit, "metabolism/modeled/fit_wbp_fixed_hallK.rds")
+
+# NHC 
+for(i in seq(2017:2019)){
+  dat <- NHC %>% filter(year(solar.time) == i)
+  bayes_specs_Hall <- set_up_model(dat, "NHC", bayes_name, "hall", kq_hall)
+  dat <- prep_fake_Q(dat, bayes_specs_Hall)
+  bayes_specs_Hall$K600_lnQ_nodes_centers <- 
+    seq(1:length(bayes_specs_Hall$K600_lnQ_nodes_centers))
+  fit <- metab(bayes_specs_Hall, dat)
+  saveRDS(fit, paste0("metaboli  sm/modeled/fit_nhc",i,"_fixed_hallK.rds"))
+}
+
+# NHC 
+for(i in seq(2017:2019)){
+  dat <- UNHC %>% filter(year(solar.time) == i)
+  bayes_specs_Hall <- set_up_model(dat, "UNHC", bayes_name, "hall", kq_hall)
+  dat <- prep_fake_Q(dat, bayes_specs_Hall)
+  bayes_specs_Hall$K600_lnQ_nodes_centers <- 
+    seq(1:length(bayes_specs_Hall$K600_lnQ_nodes_centers))
+  fit <- metab(bayes_specs_Hall, dat)
+  saveRDS(fit, paste0("metabolism/modeled/fit_unhc",i,"_fixed_hallK.rds"))
+}
+
+
+
+#inspect fits ####
 load_inspect_fit <- function(filename){
   fit <- readRDS(paste0("metabolism/modeled/", filename))
   mm<-plot_metab_preds(predict_metab(fit))
@@ -254,7 +298,8 @@ load_inspect_fit <- function(filename){
   return(fit)
 }
 
-fit_raymond_ss24 <- load_inspect_fit("fit_nhc19_raymond_ss24.rds")
+nhc_fixed <- load_inspect_fit("fit_nhc19_fixedK.rds")
+nhc_fixed2 <- load_inspect_fit("fit_nhc19_fixedK2.rds")
 fit_raymond_ss05 <- load_inspect_fit("fit_nhc19_raymond_ss05.rds")
 fit_nreg_ss24 <- load_inspect_fit("fit_nhc19_nreg_ss24.rds")
 fit_nreg_fixedK1 <- load_inspect_fit("fit_nhc19_fixedK.rds")
@@ -263,7 +308,6 @@ fit_nreg_sd7_ss05 <- load_inspect_fit("fit_nhc19_nreg_sd7_ss05.rds")
 # Based on results from testing this on NHC2019, I will move forward using
 # night regression, not normalized to the raymond K600 estimates with 
 # a K600_logsd of 0.7 and a K600_sigma_sigma of 0.05
-
 
 # Run models for all sites #### 
 
