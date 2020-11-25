@@ -137,7 +137,7 @@ plot_hall_metab <- function(met, ylim = NULL,
   points(met$date, met$GPP_gO2m2d, pch = 19, col = "forestgreen")
   points(met$date, met$ER_gO2m2d, pch = 19, col = "sienna")
 }
-plot_kde_metab <- function(met, lim = NULL){
+plot_kde_metab <- function(met, lim = NULL, col = "grey25"){
   
   kernel <- kde(na.omit(met[,c("GPP","ER")]))
   if(is.null(lim)) {
@@ -149,9 +149,9 @@ plot_kde_metab <- function(met, lim = NULL){
        display = "filled.contour",
        cont=c(30,60,90), #lwd = 1,
        col = c(NA, 
-               alpha("grey25", .25), 
-               alpha("grey25", .5), 
-               alpha("grey25", .75)))
+               alpha(col, .25), 
+               alpha(col, .5), 
+               alpha(col, .75)))
        
   abline(0,-1)
 }

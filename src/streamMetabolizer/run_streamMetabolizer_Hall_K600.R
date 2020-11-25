@@ -189,9 +189,9 @@ sites <- c("nhc2017", "nhc2018", "nhc2019",
            "pm", "cbp", "wb", "wbp")
 source("../src/streamMetabolizer/inspect_model_fits.r")
 
-pdf("../figures/nhc_met_models_Hall_K.pdf", width = 9, height = 6)
+pdf("../figures/nhc_met_models_nreg_K.pdf", width = 9, height = 6)
   for(site in sites){
-    fit <- readRDS(paste0("metabolism/modeled/fit_", site, "_fixed_hallK.rds"))
+    fit <- readRDS(paste0("metabolism/modeled/", site, "_nreg_v2.rds"))
     plot_diagnostics(fit, site, ylim = c(-15, 7), lim = 7)
   }
 dev.off()
@@ -204,7 +204,16 @@ for(site in sites){
     mutate(site = !!site)
   all_met <- bind_rows(all_met, met)
 }
- 
+
+all_met <- all_met %>%
+  mutate(site = case_when(
+    grepl("^nhc", site) ~ "nhc",
+    grepl("^unhc", site) ~ "unhc",
+    TRUE ~ site
+  ))
+
+write_csv(all_met, 
+          "C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/code/data/NHC_metab_allsites_fixedHallK.csv")
 ss_met <- all_met %>% 
   mutate(doy = format(date, "%j")) %>%
   group_by(doy) %>%
@@ -222,6 +231,18 @@ png("../figures/hall_met_comparison_hallK.png", height = 4, width = 7.5,
   plot_hall_metab(ss_met, ylim = c(-15,10), doy = T)
   plot_kde_hall_metab(ss_met)
   mtext("All sites metabolism", outer = T, line = -3, cex = 1.2)
+dev.off()
+
+png("../figures/metabolism_contours_K_estimates.png", height = 5, width = 5, 
+    units = "in", res = 300)
+  plot_kde_metab(hall_met, col = "steelblue", lim = 3.5)
+  par(new = T)
+  plot_kde_metab(ss_met, col = "darkred", lim = 3.5)
+  legend("topright", cex = 1.2,
+         c("Hall 1970 K", "night regression K"),
+         fill = c(alpha("steelblue", .75), alpha("darkred", .75)), 
+         border = NA, bty = "n")
+  mtext("NHC Metabolism Estimates (n = 3203)", cex = 1.2)
 dev.off()
 # ## Check binning
 # Binning <- function(Site, thresh = 0.5){
