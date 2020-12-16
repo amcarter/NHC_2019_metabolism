@@ -12,12 +12,42 @@ library(lubridate)
 library(zoo)
 setwd('C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data')
 
+norm_depths = data.frame(site = c("NHC","PM","CBP","WB","WBP","PWC","UNHC"),
+                         depth_cm = c(50, 65, 54, 68, 70, 70, 30),
+                         level_cm = c(80, 90, 75, 60, 90, 90, 30))
+
+# 1. Load Data ####
 # load field notes
 fnotes <- read_csv("water_chemistry/nhc_ysi_data.csv") %>%
   mutate(DateTime_EST = round_date(as.POSIXct(paste(date, as.character(time)), 
                                    format = "%m/%d/%Y %H:%M:%S", tz = "EST"),
                                    unit = '15 minutes'))
+spdepths <- read_csv("water_chemistry/streampulse_depth_measurements_2017.csv") %>%
+  filter(!is.na(Date)) %>%
+  mutate(DateTime_EST = round_date(as.POSIXct(paste(Date, as.character(Time)), 
+                                   format = "%m.%d.%Y %H:%M", tz = "EST"),
+                                   unit = '15 minutes'),
+         waterdepth_cm = stage_at_sensor *100) %>%
+  select(site = Site, DateTime_EST, waterdepth_cm) %>%
+  filter(site %in% c("NHC", "UNHC"))
 
+
+fnotes <- bind_rows(fnotes, spdepths)
+depths <- fnotes %>%
+  mutate(date = as.Date(DateTime_EST)) %>%
+  select(site, date, waterdepth_cm) %>%
+  filter(date > as.Date("2018-01-01") & !(site %in% c("PWC","MC751"))) %>%
+  group_by(date, site) %>%
+  summarize_all(mean, na.rm = T) %>%
+  ungroup() %>%
+  pivot_wider(names_from = site, values_from = waterdepth_cm) %>%
+  mutate_all(na.approx, na.rm = F) %>%
+  pivot_longer(cols = -date, names_to = "site", values_to = "depth_cm")
+
+ggplot(depths, aes(x = date, y = depth_cm, color = site)) +
+  geom_line()
+ggplot(spdepths, aes(x = DateTime_EST, y = waterdepth_cm, color = site)) +
+  geom_point()
 # CBP ####
 dat <- read_csv("metabolism/processed/CBP.csv") %>%
   mutate(DateTime_EST = force_tz(DateTime_EST, tz = "EST"))
@@ -299,14 +329,100 @@ dat <- dat %>%
   mutate(discharge = ifelse(depth > .4 & level_m < .9, NA, discharge),
          depth = ifelse(depth >.4 & level_m <.9, NA, depth))
 
-# compare to CBP q to get coefficient for unit discharge
-cbp <- read_csv("metabolism/processed/CBP_lvl.csv") %>%
-  select(DateTime_EST, cbp = depth) %>%
-  left_join(dat)
+# # compare to CBP q to get coefficient for unit discharge
+# cbp <- read_csv("metabolism/processed/CBP_lvl.csv") %>%
+#   select(DateTime_EST, cbp.depth = depth, cbp.q = discharge) %>%
+#   left_join(dat)
+# plot(cbp$cbp.q, cbp$discharge, log = "xy")
+# dat$depth2 <- calc_depth(dat$discharge, c)
+# plot(cbp$cbp, cbp$depth)
+# abline = c(0,1)
+# 
+# plot(dat$depth, dat$depth2)
+# plot(dat$level_m, dat$depth, ylim = c(0,2.5))
 
-dat$depth2 <- calc_depth(dat$discharge, c)
-plot(cbp$cbp, cbp$depth)
-abline = c(0,1)
+# PM depth ####
+# calc depth function in stream metabolizer can be calibrated by providing a
+# depth at unit discharge, this is the discharge = 1 m3s
+# unit discharge is at a stage of ~ 1 m in this stream, 
+# zero flow corresponds to a stage of ~ 0.25 m
+# Hall declared standard water level to be 50 cm above zero flow,
+# which was the normal spring flow and corresponded to a depth of 0.54 m at CBP
+# .35 at UNHC, .7 at WBP, .68 at WB, .65 at PM, .5 at NHC
+# normal depths are CBP = PM = NHC = WBP = 75, WB = 50, UNHC = 25
+nd <- norm_depths %>%
+  filter(site =="PM")
+
+ggplot(dat, aes(level_m, log(discharge))) +
+  geom_point(aes(col = DateTime_EST)) +
+ # ylim(0,2) + 
+  geom_vline(xintercept =  1) + 
+  geom_hline(yintercept = log(.8))
+
+# Given all that, I am going to say level 1 should correspond to depth 65. 
+# in my data, level 100 corresponds to Q of 0.8
+
+# using the default exponent from Leopold and Maddock 1953, f = 0.294, 
+# I can calculate the average depth at unit Q from the above observation:
+# d = c Q^f   0.65 = c * 0.8^0.294
+
+c <- .65/(.8 ^.294)
+tmp <- dat %>% 
+  mutate(depth2 = calc_depth(discharge, c)) 
+ggplot(tmp, aes(level_m, depth2)) +
+  geom_point() +
+  geom_point(aes(y = depth), col = "blue") +
+  ylim(0,2) 
+
+dat <- tmp %>% 
+  select(-depth) %>%
+  rename(depth = depth2)
+
+# once we reach overbank flow, I will assume that changes in level continue
+# to cause a linear change in depth with the same slope as before.
+# This relationship shifts part way through the year, so I'll do it twice.
+# The date where this divide happens is in Oct during low flow, I'll use
+# the end of the break at Oct 6
+
+dl <- dat %>% 
+  filter(DateTime_EST > as.POSIXct("2019-06-01 00:00:00", tz = "EST")) 
+
+ggplot(dat, aes(level_m, depth)) +
+  geom_point(aes(col = DateTime_EST)) +
+  ylim(0,2) +
+  geom_vline(xintercept = 1.12) +
+  geom_hline(yintercept = .9)
+
+dl <- dat %>% 
+  filter(DateTime_EST > as.POSIXct("2019-06-01 00:00:00", tz = "EST") &
+           level_m < 1.12 & depth < 0.9) 
+
+logEstimate <- lm(depth~log(level_m),data=dl)
+x <- seq(0.1, 2, by = .1)
+plot(dl$level_m, dl$depth, ylim = c(0,3), xlim = c(0,2))
+coef <- logEstimate$coefficients
+curve(coef[1] + coef[2] * log(x), add=TRUE, col=4, lwd = 3)
+
+# linEstimate <- lm(depth~level_m,data=dl)
+# x <- seq(0.1, 2, by = .1)
+# plot(dl$level_m, dl$depth, ylim = c(0,1.5), xlim = c(0,2))
+# coef <- linEstimate$coefficients
+# curve(coef[1] + coef[2] * (x), add=TRUE, col=4, lwd = 3)
+# 
+dat$depth2 <- coef[1] + coef[2] * log(dat$level_m)
+# dat$depth3 <- coef[1] + coef[2] * (dat$level_m)
+
+plot(dat$DateTime_EST, dat$depth, type = "l", ylim = c(0,2))
+lines(dat$DateTime_EST, dat$depth2, col = 3)
+#lines(dat$DateTime_EST, dat$depth3, col = 4)
+lines(dat$DateTime_EST, dat$level_m, col = 2)
+
+dat_lvl <- dat %>%
+  mutate(depth = ifelse(depth2 < 0.15, 0.15, depth2)) %>%
+  select(-depth2)
+
+
+
 write_csv(dat, "metabolism/processed/PM_lvl.csv")
 # WB  ####
 
@@ -512,3 +628,41 @@ ggplot(dat, aes(level_m, depth)) +
 ylim(0,4) 
 
 write_csv(dat, "metabolism/processed/PWC_lvl.csv")
+
+# NHC ####
+dat <- read_csv("metabolism/processed/NHC.csv") %>%
+  mutate(DateTime_EST = force_tz(DateTime_EST, tz = "EST"))
+fn <- fnotes %>% 
+  filter(site == "NHC",
+         !is.na(waterdepth_cm))%>%
+  select(DateTime_EST, waterdepth_cm) 
+
+fn <- left_join(fn, dat, by = "DateTime_EST") %>%
+  mutate(delta = waterdepth_cm/100 - level_m)
+# explore data
+lvl <- xts(x = dat$level_m, order.by = dat$DateTime_EST)
+dygraph(lvl)
+abline(h = .4) # this looks like the level where points below are just sensor out of water
+dat$level_m[which(dat$level_m < 0.4)] <- NA
+
+plot(fn$DateTime_EST, fn$waterdepth_cm/100, col = 2)
+
+plot(fn$DateTime_EST, fn$waterdepth_cm/100, col = 2, pch = 19, ylim = c(.5, 1.5))
+lines(dat$DateTime_EST, dat$level_m)
+
+par(new = T)
+plot(fn$DateTime_EST, fn$delta, type = "l", col = 3)
+axis(4)
+
+hist(fn$delta)
+plot(fn$level_m, fn$delta)
+abline(h=0)
+
+plot(fn$waterdepth_cm/100, fn$level_m)
+abline(0,1)
+
+dat$level_m <- dat$level_m + mean(fn$delta, na.rm = T)
+
+# 12/04/2020 I am not saving this file yet, I am waiting to see if there is 
+# updated field notes first.
+# write_csv(dat, "metabolism/processed/NHC.csv")

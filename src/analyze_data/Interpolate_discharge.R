@@ -13,7 +13,8 @@ library(zoo)
 
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data")
 
-ZQdat <- read_csv(file="siteData/NC_streampulseZQ_data.csv")
+# ZQdat_sp <- read_csv(file="siteData/NC_streampulseZQ_data.csv")
+ZQdat <- read_csv(file="rating_curves/modified_ZQ_curves.csv")
 wsAreas <- read_csv(file="siteData/NHCsite_watersheds.csv")
 sites <- read_csv(file="siteData/NHCsite_metadata.csv")
 source("../src/helpers.R")
@@ -68,109 +69,121 @@ UNHC <- UNHC %>% select(DateTime_UTC, value, variable)%>%
 w <- which(UNHC$UNHC.pressure_kPa<101)
 w <- w[which(w<100000)]
 UNHC$UNHC.pressure_kPa[w]<-NA
-UNHC <- left_join(NHC, UNHC, by="DateTime_UTC")
-
-UNHC$DateTime_UTC<- ymd_hms(UNHC$DateTime_UTC)
-
+qq <- left_join(NHC, UNHC, by="DateTime_UTC")
+  
 # Calculate depth from water pressure and add sensor offset
 # Depth = pressure_Pa = kg/ms2/(density_kg/m3*gravity_m/s2)
 # density is temperature dependent, for now I am assuming it's just 998 kg/m3
 sensor_offsets <- read_csv("siteData/sensor_offsets.csv")
-NHC$pressure_Pa <- (NHC$pressure_kPa - NHC$AirPres_kPa)*1000
-NHC$level_m <- sensor_offsets[sensor_offsets$site == "NHC", ]$offset_cm/100 +
-  NHC$pressure_Pa/(998*9.8)
-UNHC$pressure_Pa <- (UNHC$pressure_kPa-UNHC$AirPres_kPa)*1000
-UNHC$U.pressure_Pa<- (UNHC$UNHC.pressure_kPa-UNHC$AirPres_kPa)*1000
-UNHC$level_m <- sensor_offsets[sensor_offsets$site=="NHC",]$offset_cm/100 +
-  UNHC$pressure_Pa/(998*9.8)
+qq <- qq %>%
+  mutate(nhc.pressure_Pa = (pressure_kPa - AirPres_kPa)*1000,
+         nhc.level_m = nhc.pressure_Pa/(998 * 9.8) +
+           sensor_offsets[sensor_offsets$site == "NHC",]$offset_cm/100,
+         unhc.pressure_Pa = (UNHC.pressure_kPa - AirPres_kPa) * 1000,
+         unhc.level_m = unhc.pressure_Pa/(998 * 9.8) + 
+           sensor_offsets[sensor_offsets$site == "UNHC",]$offset_cm/100) %>%
+  mutate(unhc.level_m = ifelse(unhc.level_m < 0.24, NA, unhc.level_m)) %>%
+  select(DateTime_UTC, nhc.temp = temp, nhc.level_m,
+         unhc.temp = UNHC.temp, unhc.level_m,
+         AirPres_kPa)
 
-UNHC$U.level_m <- sensor_offsets[sensor_offsets$site=="UNHC",]$offset_cm/100 +
-  UNHC$U.pressure_Pa/(998*9.8)
-UNHC$U.level_m[UNHC$U.level_m<0.24]<-NA
+# Calculate discharge from rating curves ####
+# Q = a * level ^ b
+par(mfrow = c(1,2))
+m <- lm(log(discharge_cms) ~ log(level_m),
+      data = ZQdat_sp[ZQdat_sp$site == "NHC",])
+ab.nhc_sp <- summary(m)$coefficients[,1]
+ab.nhc <- as.data.frame(ZQdat[1,2:3])
+plot(ZQdat_sp$level_m[ZQdat_sp$site == "NHC"],
+     ZQdat_sp$discharge_cms[ZQdat_sp$site == "NHC"],
+     xlim = c(.2,2), ylim = c(0,20), main = "NHC")
+lines(seq(.5, 10, by = .01), 
+      exp(ab.nhc_sp[1] + log(seq(.5, 10, by = .01)) * ab.nhc_sp[2]),
+      lty = 2)
+lines(seq(.5, 10, by = .01),
+      exp(as.numeric(ab.nhc[1]) + 
+            as.numeric(ab.nhc[2]) * log(seq(.5, 10, by = .01))))
 
+m <- lm(log(discharge_cms) ~ log(level_m),
+        data = ZQdat_sp[ZQdat_sp$site == "UNHC",])
+ab.unhc_sp <- summary(m)$coefficients[,1]
+ab.unhc <- as.data.frame(ZQdat[2,2:3])
+plot(ZQdat_sp$level_m[ZQdat_sp$site =="UNHC"],
+     ZQdat_sp$discharge_cms[ZQdat_sp$site == "UNHC"],
+     xlim = c(.2, 2), ylim = c(0,20), main = "UNHC")
+lines(seq(.1, 2, by = .01),
+      exp(ab.unhc_sp[1] + log(seq(.1, 2, by = .01)) * ab.unhc_sp[2]),
+          lty = 2)
+lines(seq(.1, 2, by = .01),
+      exp(as.numeric(ab.unhc[1]) + 
+            as.numeric(ab.unhc[2]) * log(seq(.1, 2, by = .01))))
 
-# Calculate discharge from rating curves
-# level = a * Q ^ b
-m<-nls(level_m ~ a*discharge_cms^b,
-       data=ZQdat[ZQdat$site=="NHC",2:3],start=list(a=1,b=1))
-a.NHC <- summary(m)$coefficients[1]
-b.NHC <- summary(m)$coefficients[2]#Summary of the regression statistics
-plot(ZQdat$discharge_cms[ZQdat$site=="NHC"], ZQdat$level_m[ZQdat$site=="NHC"], xlab="Q", ylab="z", main="NHC", xlim = c(0,100), ylim = c(.9,2))
-lines(seq(.1,100, by=.1), a.NHC*seq(.1,100, by=.1)^b.NHC)
- m <- nls(discharge_cms ~ (a * exp(b * level_m)), 
-          data = ZQdat[ZQdat$site == "NHC",2:3 ], 
-          start = list(a = 1, b = 1))
- a.NHC.e <- summary(m)$coefficients[1]
- b.NHC.e <- summary(m)$coefficients[2]#Summary of the regression statistics
-lines(seq(.1,100, by=.1), log(seq(.1,100, by=.1)/a.NHC.e)/b.NHC.e)
- 
-NHC$discharge_m3s <- (NHC$level_m/a.NHC.e)^(1/b.NHC.e)
-NHC$discharge_m3s[which(NHC$discharge_m3s>=500)] <- NA
+Qdat <- qq %>%
+  mutate(nhc.discharge = exp(as.numeric(ab.nhc[1])
+                             + as.numeric(ab.nhc[2]) * log(nhc.level_m)),
+         nhc.discharge = ifelse(nhc.discharge > 500 | nhc.discharge < .002, 
+                                NA, nhc.discharge),
+         unhc.discharge = exp(as.numeric(ab.unhc[1]) + 
+                                as.numeric(ab.unhc[2]) * log(unhc.level_m)),
+         unhc.discharge = ifelse(unhc.discharge >= 120, NA, unhc.discharge),
+         nhc.discharge = na.approx(nhc.discharge, na.rm = F, maxgap = 12),
+         unhc.discharge = na.approx(unhc.discharge, na.rm = F, maxgap = 12))
 
-NHC %>% select(DateTime_UTC, water_temp_C = temp, discharge_m3s) %>%
-  write_csv("data/NHC_Q_and_temp.csv")
+par(mfrow = c(1,1))
+plot(Qdat$unhc.discharge, (Qdat$nhc.discharge),log = "xy",
+     xlab = "unhc Q", ylab = "nhc Q")
+#     col = alpha(1,.01), pch = 20)#, xlim = c(0,5), ylim = c(0,1.2))
+m <- lm(unhc.discharge ~ nhc.discharge,
+        Qdat)
+mm <- summary(m)$coefficients[,1]
+abline(mm, col = 3)
 
-m<-nls(level_m ~ a*discharge_cms^b,
-       data=ZQdat[ZQdat$site=="UNHC",2:3],start=list(a=1,b=1))
-a.UNHC <- summary(m)$coefficients[1]
-b.UNHC <- summary(m)$coefficients[2]#Summary of the regression statistics
-plot(ZQdat$discharge_cms[ZQdat$site=="UNHC"], ZQdat$level_m[ZQdat$site=="UNHC"], xlab="Q", ylab="z", main="UNHC")
-lines(seq(.1,3, by=.1), a.UNHC*seq(.1,3, by=.1)^b.UNHC)
+m <- lm(log(nhc.discharge) ~ log(unhc.discharge),
+        Qdat)
+mm <- summary(m2)$coefficients[,1]
 
-UNHC$NHC_Q_cms <- (UNHC$level_m/a.NHC)^(1/b.NHC)
-UNHC$UNHC_Q_cms <- (UNHC$U.level_m/a.UNHC)^(1/b.UNHC)
+lines(seq(.01, 50.01, by = .1), 
+      exp(mm[1] + mm[2] * log(seq(.01,50.01, by = .1))), col = 2)
+abline(mm, col = 2)
 
-
-Qdat <- UNHC %>% select(DateTime_UTC, AirPres_kPa, AirTemp_C,NHC_Q_cms, UNHC_Q_cms)
-
-Qdat$NHC_Q_cms <- na.approx(Qdat$NHC_Q_cms, na.rm=FALSE, maxgap=12)
-Qdat$UNHC_Q_cms <- na.approx(Qdat$UNHC_Q_cms, na.rm=FALSE, maxgap=12)
-
-plot(Qdat$UNHC_Q_cms[1:36300], Qdat$NHC_Q_cms[8:36307], 
-     xlab = "UNHC Q", ylab = "NHC Q",log="xy")#, ylim = c(0,100), xlim = c(0,400), log = "xy")
-mQ <- glm(log(NHC_Q_cms[7:36371])~log(UNHC_Q_cms[1:36365]), data=Qdat)
-a=summary(mQ)$coefficients[1,1]
-b=summary(mQ)$coefficients[2,1]
-abline(a,b , col = "red")
-
+write_csv(Qdat, "rating_curves/NHC_UNHC_Q.csv")
 
 ######################################################
 # fill missing NHC Q based on UNHC. 
 # This should be revisited, there is clear historesis in the Q-Q relationship
-
-Qdat$predNHC_Q <- exp(a+b*log(Qdat$UNHC_Q_cms))
-Qdat$predUNHC_Q <- exp((log(Qdat$NHC_Q_cms)-a)/b)
-
-Qdat$notes <- as.character(NA)
-Qdat$notes[is.na(Qdat$NHC_Q_cms)&!is.na(Qdat$predNHC_Q)]<- "modeled NHC Q"
-Qdat$notes[is.na(Qdat$UNHC_Q_cms)&!is.na(Qdat$predUNHC_Q)]<- "modeled UNHC Q"
+Qdat <- read_csv("rating_curves/NHC_UNHC_Q.csv")
+Qdat <- 
+  Qdat %>%
+  mutate(predNHC_Q = exp(mm[1] + mm[2] * log(unhc.discharge)),
+         predUNHC_Q = exp((log(nhc.discharge) - mm[1])/mm[2]),
+         notes = case_when(is.na(nhc.discharge) & !is.na(predNHC_Q) ~ "modeled NHC Q",
+                           is.na(unhc.discharge) & !is.na(predUNHC_Q) ~ "modeled UNHC Q"),
+         modNHC_Q = ifelse(is.na(nhc.discharge), predNHC_Q, nhc.discharge),
+         modUNHC_Q = ifelse(is.na(unhc.discharge), predUNHC_Q, unhc.discharge))
+         
 
 # snap NHC interpolated points to their neighbors
 
-NHC_gaps <- rle_custom(is.na(Qdat$NHC_Q_cms))
-UNHC_gaps <- rle_custom(is.na(Qdat$UNHC_Q_cms))
-
+NHC_gaps <- rle_custom(is.na(Qdat$nhc.discharge))
+UNHC_gaps <- rle_custom(is.na(Qdat$unhc.discharge))
 
 
 # fill in and plot modeled data
-Qdat$NHC_modQ_cms <- Qdat$NHC_Q_cms
-Qdat$NHC_modQ_cms[is.na(Qdat$NHC_Q_cms)] <- Qdat$predNHC_Q[is.na(Qdat$NHC_Q_cms)]
 
-Qdat$UNHC_modQ_cms <- Qdat$UNHC_Q_cms
-Qdat$UNHC_modQ_cms[is.na(Qdat$UNHC_Q_cms)] <- Qdat$predUNHC_Q[is.na(Qdat$UNHC_Q_cms)]
+plot(Qdat$DateTime_UTC, Qdat$modNHC_Q, log="y", main = "NHC")
+points(Qdat$DateTime_UTC[Qdat$notes=="modeled NHC Q"], 
+       Qdat$modNHC_Q[Qdat$notes=="modeled NHC Q"], col = "red")
 
-plot(Qdat$DateTime_UTC, Qdat$NHC_modQ_cms, log="y", main = "NHC")
-points(Qdat$DateTime_UTC[Qdat$notes=="modeled NHC Q"], Qdat$NHC_modQ_cms[Qdat$notes=="modeled NHC Q"], col = "red")
-
-plot(Qdat$DateTime_UTC, Qdat$UNHC_modQ_cms, log="y", main = "UNHC")
-points(Qdat$DateTime_UTC[Qdat$notes=="modeled UNHC Q"], Qdat$UNHC_modQ_cms[Qdat$notes=="modeled UNHC Q"], col = "red")
+plot(Qdat$DateTime_UTC, Qdat$modUNHC_Q, log="y", main = "UNHC")
+points(Qdat$DateTime_UTC[Qdat$notes=="modeled UNHC Q"], 
+       Qdat$modUNHC_Q[Qdat$notes=="modeled UNHC Q"], col = "red")
 
 # find endpoints of measured and modeled data in the gaps
 NHC_gaps <- NHC_gaps[NHC_gaps$values==1,]
 UNHC_gaps <- UNHC_gaps[UNHC_gaps$values==1,]
 
 # Don't allow interpolated discharge to be lower than NHC min flow
-NHCmin <- min(Qdat$NHC_Q_cms, na.rm=T)
+NHCmin <- min(Qdat$nhc.discharge, na.rm=T)
 m<- min(Qdat$predNHC_Q, na.rm=T)
 t <- which(Qdat$predNHC_Q==m)
 
@@ -179,11 +192,11 @@ for(i in 1:nrow(NHC_gaps)){
   b <- NHC_gaps[i,]$stops
   
   if(a==1) next
-  startdiff <- Qdat$NHC_Q_cms[a-1] - Qdat$predNHC_Q[a]
+  startdiff <- Qdat$nhc.discharge[a-1] - Qdat$predNHC_Q[a]
   if(b==nrow(Qdat)){
     enddiff <- startdiff
   } else{
-      enddiff <- Qdat$NHC_Q_cms[b+1] - Qdat$predNHC_Q[b]
+      enddiff <- Qdat$nhc.discharge[b+1] - Qdat$predNHC_Q[b]
   }
   if(is.na(startdiff)||is.na(enddiff)) next
    diffQ <- seq(startdiff, enddiff, length.out=NHC_gaps[i,]$lengths)
@@ -192,61 +205,68 @@ for(i in 1:nrow(NHC_gaps)){
    tmp2 <- seq((NHCmin-Qdat$predNHC_Q[t]), enddiff, length.out=(b-t+1))
    diffQ <- c(tmp1,tmp2)
   }
-  Qdat$NHC_modQ_cms[a:b]<- Qdat$predNHC_Q[a:b]+diffQ
+  Qdat$modNHC_Q[a:b]<- Qdat$predNHC_Q[a:b]+diffQ
   
 }
 
 # snap UNHC gaps
 # Don't allow interpolated discharge to be lower than NHC min flow
-UNHCmin <- min(Qdat$UNHC_Q_cms, na.rm=T)
+UNHCmin <- min(Qdat$unhc.discharge, na.rm=T)
 m<- min(Qdat$predNHC_Q, na.rm=T)
 t <- which(Qdat$predNHC_Q==m)
 
 for(i in 1:nrow(UNHC_gaps)){
   a<- UNHC_gaps[i,]$starts
   b <- UNHC_gaps[i,]$stops
-  startdiff <- Qdat$UNHC_Q_cms[a-1] - Qdat$predUNHC_Q[a]
+  startdiff <- Qdat$unhc.discharge[a-1] - Qdat$predUNHC_Q[a]
   if(b==nrow(Qdat)){
     enddiff <- startdiff
   } else{
-    enddiff <- Qdat$UNHC_Q_cms[b+1] - Qdat$predUNHC_Q[b]
+    enddiff <- Qdat$unhc.discharge[b+1] - Qdat$predUNHC_Q[b]
   }
   if(is.na(startdiff)||is.na(enddiff)) next
   diffQ <- seq(startdiff, enddiff, length.out=NHC_gaps[i,]$lengths)
   
-  Qdat$UNHC_modQ_cms[a:b]<- Qdat$predUNHC_Q[a:b]+diffQ
+  Qdat$modUNHC_Q[a:b]<- Qdat$predUNHC_Q[a:b]+diffQ
   
 }
 
 # double check that everything looks okay
-plot(Qdat$DateTime_UTC, Qdat$NHC_modQ_cms, log="y", main = "NHC")
+plot(Qdat$DateTime_UTC, Qdat$modNHC_Q, log="y", main = "NHC")
 points(Qdat$DateTime_UTC[Qdat$notes=="modeled NHC Q"], 
-       Qdat$NHC_modQ_cms[Qdat$notes=="modeled NHC Q"], col = "red")
+       Qdat$modNHC_Q[Qdat$notes=="modeled NHC Q"], col = "red")
 
-plot(Qdat$DateTime_UTC, Qdat$UNHC_modQ_cms, log="y", main = "UNHC")
+plot(Qdat$DateTime_UTC, Qdat$modUNHC_Q, log="y", main = "UNHC")
 points(Qdat$DateTime_UTC[Qdat$notes=="modeled UNHC Q"], 
-       Qdat$UNHC_modQ_cms[Qdat$notes=="modeled UNHC Q"], col = "red")
+       Qdat$modUNHC_Q[Qdat$notes=="modeled UNHC Q"], col = "red")
 
-NHC_UNHC_Q_interp <- select(Qdat, DateTime_UTC, AirPres_kPa, AirTemp_C,
-                            NHC_Q_cms,UNHC_Q_cms, notes)
+Qdat$modUNHC_Q[Qdat$modUNHC_Q<.02] <- NA
 
-write_csv(NHC_UNHC_Q_interp, 
-          "C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/data/streampulse/raw/NHC_UNHC_Q_dat.csv")
+NHC_UNHC_Q_interp <- select(Qdat, DateTime_UTC, AirPres_kPa,
+                            NHC_Q = modNHC_Q,
+                            UNHC_Q = modUNHC_Q, notes)
+
+write_csv(NHC_UNHC_Q_interp, "rating_curves/NHC_UNHC_Q.csv")
+
 #########################################################
 # Add modeled Q for NHC sites to a dataframe with columns for each site to interpolate
 newQdat <- data.frame(matrix(NA, nrow=nrow(Qdat), ncol = (1+nrow(sites))))
 colnames(newQdat)<- c("DateTime_UTC",paste(sites$sitecode, "Q", sep="."))
 
 newQdat$DateTime_UTC <- Qdat$DateTime_UTC
-newQdat$NHC.Q <- Qdat$NHC_modQ_cms
-newQdat$UNHC.Q <- Qdat$UNHC_modQ_cms
+newQdat$NHC.Q <- Qdat$modNHC_Q
+newQdat$UNHC.Q <- Qdat$modUNHC_Q
 
 for(i in which(!is.na(newQdat$NHC.Q))){
-  df <- data.frame(Q = c(newQdat$NHC.Q[i], newQdat$UNHC.Q[i]), area = c(wsAreas$ws_area.km2[c(1,7)]))
-  m <- glm(Q~area, data=df)
-  Qnew <- summary(m)$coefficients[1,1]+summary(m)$coefficients[2,1]*sites$ws_area.km2[2:6]
-  newQdat[i,3:7] <-Qnew
+  df <- data.frame(Q = c(newQdat$NHC.Q[i], newQdat$UNHC.Q[i]), 
+                   area = c(wsAreas$ws_area.km2[c(1,7)]))
+  m <- lm(Q ~ area, data=df)
+  a <- summary(m)$coefficients[,1]
+  if(length(a) != 2){ next }
+  Qnew <- a[1] + a[2] * sites$ws_area.km2[2:6]
+  newQdat[i,3:7] <- Qnew
+  if(i %% 5000 == 0){print(newQdat$DateTime_UTC[i])}
 }
 
-newQdat <- full_join(newQdat, Qdat[,c(1,2,3,8)], by="DateTime_UTC")
-write_csv(newQdat, path = "siteData/interpolatedQ_allsites.csv")
+newQdat <- full_join(newQdat, Qdat[,c(1,6,11)], by="DateTime_UTC")
+write_csv(newQdat, path = "rating_curves/interpolatedQ_allsites_modified.csv")

@@ -96,6 +96,12 @@ set_up_model <- function(dat, bayes_name, kq ){
 
 # Fixed K model ####
 
+# the only place that Q enters into the model is to predict the K-Q relationship
+# for this reason, we can use a fake Q as nodes and with our data to simplify
+# using a fixed K/Q relationship as a prior. In this case, we are binning the 
+# data and then replacing everything within each bin with a node, assigned to 
+# the corresponding K derived from the Hall 1972 paper
+
 prep_fake_Q <- function(dat, bayes_specs_fixedK){
   dat <- dat %>% 
     mutate(date = as.Date(solar.time)) 
@@ -202,6 +208,16 @@ for(site in sites){
   fit <- readRDS(paste0("metabolism/modeled/fit_", site, "_fixed_hallK.rds"))
   met <- predict_metab(fit) %>%
     mutate(site = !!site)
+  dat <- fit@data %>%
+    select(date, DO_mgl = DO.obs, DO.sat, temp.water, depth, discharge) %>%
+    group_by(date) %>%
+    summarize_all(mean, na.rm = T)
+  met <- fit@fit$daily %>% 
+    select(date, K600 = K600_daily_50pct,
+           K600.lower = K600_daily_2.5pct,
+           K600.upper = K600_daily_97.5pct) %>%
+    left_join(met, by = "date") %>%
+    left_join(dat, by = "date")
   all_met <- bind_rows(all_met, met)
 }
 
