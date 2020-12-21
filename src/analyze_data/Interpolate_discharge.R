@@ -20,7 +20,7 @@ sites <- read_csv(file="siteData/NHCsite_metadata.csv")
 source("../src/helpers.R")
 
 #Add WS area to sites list
-sites <- left_join(sites, wsAreas[,c(2,7)], by = "sitecode")
+# sites <- left_join(sites, wsAreas[,c(2,7)], by = "sitecode")
 
 
 # find date range for which we need discharge for NHC sites
@@ -58,6 +58,7 @@ NHC[which(is.na(NHC$AirPres_kPa)),"AirPres_kPa"] <- NHC[which(is.na(NHC$AirPres_
 NHC[which(is.na(NHC$AirTemp_C)),"AirTemp_C"] <- NHC[which(is.na(NHC$AirTemp_C)),"air_temp"]
 
 NHC <- select(NHC, -air_kPa, -air_temp)
+# NHC <- filter(NHC, DateTime_UTC > ymd_hms("2018-01-01 00:00:00"))
 
 UNHC_dat <- request_data("NC_UNHC", variables=c("WaterPres_kPa", "WaterTemp_C"))
 UNHC <- UNHC_dat$data
@@ -69,6 +70,9 @@ UNHC <- UNHC %>% select(DateTime_UTC, value, variable)%>%
 w <- which(UNHC$UNHC.pressure_kPa<101)
 w <- w[which(w<100000)]
 UNHC$UNHC.pressure_kPa[w]<-NA
+UNHC <- filter(UNHC, DateTime_UTC > ymd_hms("2018-01-01 00:00:00"))
+
+
 qq <- left_join(NHC, UNHC, by="DateTime_UTC")
   
 # Calculate depth from water pressure and add sensor offset
@@ -140,7 +144,7 @@ abline(mm, col = 3)
 
 m <- lm(log(nhc.discharge) ~ log(unhc.discharge),
         Qdat)
-mm <- summary(m2)$coefficients[,1]
+mm <- summary(m)$coefficients[,1]
 
 lines(seq(.01, 50.01, by = .1), 
       exp(mm[1] + mm[2] * log(seq(.01,50.01, by = .1))), col = 2)
@@ -236,9 +240,23 @@ plot(Qdat$DateTime_UTC, Qdat$modNHC_Q, log="y", main = "NHC")
 points(Qdat$DateTime_UTC[Qdat$notes=="modeled NHC Q"], 
        Qdat$modNHC_Q[Qdat$notes=="modeled NHC Q"], col = "red")
 
+Qdat$modNHC_Q[Qdat$modNHC_Q<.01] <- NA
+
 plot(Qdat$DateTime_UTC, Qdat$modUNHC_Q, log="y", main = "UNHC")
 points(Qdat$DateTime_UTC[Qdat$notes=="modeled UNHC Q"], 
        Qdat$modUNHC_Q[Qdat$notes=="modeled UNHC Q"], col = "red")
+diff <- Qdat$modUNHC_Q[Qdat$DateTime_UTC == ymd_hms("2020-03-18 19:15:00")]-
+  Qdat$modUNHC_Q[Qdat$DateTime_UTC == ymd_hms("2020-03-18 17:30:00")]
+
+Qdat$modUNHC_Q[Qdat$DateTime_UTC > ymd_hms("2020-03-18 17:30:00") &
+                 Qdat$DateTime_UTC < ymd_hms("2020-07-15 21:00:00")] <-
+  Qdat$modUNHC_Q[Qdat$DateTime_UTC > ymd_hms("2020-03-18 17:30:00") &
+                   Qdat$DateTime_UTC < ymd_hms("2020-07-15 21:00:00")] - diff/2
+Qdat$modUNHC_Q[Qdat$DateTime_UTC > ymd_hms("2020-03-18 17:30:00") &
+                 Qdat$DateTime_UTC < ymd_hms("2020-06-15 21:00:00")] <-
+  Qdat$modUNHC_Q[Qdat$DateTime_UTC > ymd_hms("2020-03-18 17:30:00") &
+                   Qdat$DateTime_UTC < ymd_hms("2020-06-15 21:00:00")] - diff/4
+
 
 Qdat$modUNHC_Q[Qdat$modUNHC_Q<.02] <- NA
 
@@ -269,4 +287,12 @@ for(i in which(!is.na(newQdat$NHC.Q))){
 }
 
 newQdat <- full_join(newQdat, Qdat[,c(1,6,11)], by="DateTime_UTC")
+newQdat <- read_csv("siteData/interpolatedQ_allsites.csv")
+plot(newQdat$DateTime_UTC, newQdat$NHC.Q, col = "grey80", type = "l", log = "y")
+lines(newQdat$DateTime_UTC, newQdat$PM.Q, col = "grey60")
+lines(newQdat$DateTime_UTC, newQdat$CBP.Q, col = "grey50")
+lines(newQdat$DateTime_UTC, newQdat$WB.Q, col = "grey40")
+lines(newQdat$DateTime_UTC, newQdat$WBP.Q, col = "grey35")
+lines(newQdat$DateTime_UTC, newQdat$UNHC.Q, col = "grey20")
+
 write_csv(newQdat, path = "rating_curves/interpolatedQ_allsites_modified.csv")

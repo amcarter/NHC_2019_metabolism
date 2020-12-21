@@ -64,14 +64,11 @@ qq <- sdat %>%
   right_join(qq, by = "site")
 write_csv(qq, "data/rating_curves/calculated_discharge.csv")  
 
-
-
 # 3. Add a new point to the Q file ####
 # this step is likely to be custom for each site/date, so we'll do one at a time
 
-
-
-write_csv(qq, "data/rating_curves/calculated_discharge.csv")  
+# write_csv(qq, "data/rating_curves/calculated_discharge.csv")  
+qq <- read_csv("data/rating_curves/calculated_discharge.csv")  
 
 # 4. add stages ####
 # for the points that don't have it get from LL
@@ -171,12 +168,12 @@ tmp <- all %>%
                              grepl("UNHC", site) ~ l.unhc[1] + l.unhc[2] * NHC_level_m))
   
 
-
 # the 9/22/2016 date is problematic
 w <- which(tmp$date == as.Date("2016-09-22"))
 tmp$level_m[w] <- NA
-plot(tmp$stage_m, tmp$level_m)
-abline(0,1)
+ggplot(tmp, aes(stage_m, level_m, color = site)) +
+  geom_point()
+#  geom_smooth(model = "lm")
 
 m <- lm(level_m ~ stage_m, tmp)
 ll <- summary(m)$coefficients[,1]
@@ -246,20 +243,26 @@ lines(seq(0,2, by = .01), exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2])
 points(nhc$stage_m, nhc$discharge, col = 3)
 m <- lm(log(discharge)~log(stage_m), data = nhc)
 m_coef <- summary(m)$coefficients[,1]
-lines(seq(0,2, by = .01), exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2], lty = 2)
+lines(seq(0,2, by = .01), 
+      exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2], lty = 2)
 
 
-build_powerlaw_rc <- function(l, q){
+build_powerlaw_rc <- function(l, q, site){
   m <- lm(log(q)~log(l))
-  coef <- summary(m)$coefficients[,1]
-  return(coef)
+  coefs <- summary(m)$coefficients[,1]
+  out<- data.frame(site = site,
+                   a = coefs[1, drop = T],
+                   b = coefs[2, drop = T],
+                   formula = "log(q) = a + b * log(level)",
+                   min_Q = min(q, na.rm = T),
+                   max_Q = max(q, na.rm = T),
+                   n = length(!is.na(q)),
+                   row.names = NULL)
+  return(out)
 }
 
-rc <- data.frame(site = c("NHC", "UNHC"),
-           a = NA,
-           b = NA,
-           formula = "log(q) = a + b * log(level)")
-rc[rc$site =="NHC",2:3] <- build_powerlaw_rc(nhc$level_m, nhc$discharge)
-rc[rc$site =="UNHC",2:3] <- build_powerlaw_rc(unhc$level_m, unhc$discharge)
+rc <- data.frame()
+rc <- bind_rows(rc, build_powerlaw_rc(nhc$level_m, nhc$discharge, "NHC"))
+rc <- bind_rows(rc, build_powerlaw_rc(unhc$level_m, unhc$discharge, "UNHC"))
 
 write_csv(rc, "data/rating_curves/modified_ZQ_curves.csv")

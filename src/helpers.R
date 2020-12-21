@@ -1,7 +1,7 @@
-###############################
+
 # R helpers for NHC_2019_metabolism project
 
-# run length encoder: 
+# run length encoder: ####
 # for finding start and end points of NA sequences for interpolating discharge
 
 rle_custom = function(x){
@@ -14,7 +14,61 @@ rle_custom = function(x){
 }
 
 
-######################
+
+# Drift corrector ####
+
+drift_correct <-  function(yd,  colname1, colname2){ 
+  gaps <- rle_custom(is.na(yd$DO.obs)) %>%
+    filter(values == 0)
+  ends <- data.frame(pt = c(gaps$starts, gaps$stops),
+                     dat = FALSE) 
+  ysi_pts <- data.frame(pt = which(!is.na(yd$ysi_DO)),
+                        dat = TRUE) %>%
+    bind_rows(ends) %>%
+    arrange(pt)
+  n <- nrow(yd)
+  
+  for(i in 1:(nrow(ysi_pts)-1)){
+    a = ysi_pts$pt[i]
+    b = ysi_pts$pt[i+1]
+    if(a == b) next
+    meas_p1 <- yd[a, colname2, drop = TRUE]
+    sens_p1 <- yd[a, colname1, drop = TRUE]
+    meas_p2 <- yd[b, colname2, drop = TRUE]
+    sens_p2 <- yd[b, colname1, drop = TRUE]
+    if(is.na(meas_p1) | is.na(meas_p2)) next
+    
+    if(ysi_pts$dat[i]){ # the first point is a measurement
+      if(is.na(sens_p1)) next
+      if(ysi_pts$dat[i+1]){ # the second point is a measurement
+        if(is.na(sens_p2)) next
+        #interpolate between the two, shift the rest of the ts to match
+        delt <- data.frame(pt = a:b, 
+                           dd = NA)
+        delt$dd[1] <- meas_p1 - sens_p1
+        delt$dd[nrow(delt)] <- meas_p2 - sens_p2
+        delt$dd <- na.approx(delt$dd)      
+        
+        yd[a:b, colname1] <- yd[a:b, colname1] + delt$dd
+        
+        yd[(b+1):n, colname1] <- 
+          yd[(b+1):n, colname1] + delt$dd[nrow(delt)]
+      } else{ # the second point is a sensor break
+        
+        yd[a:n, colname1] <- yd[a:n, colname1] + meas_p1 - sens_p1
+        
+      }
+    } else { # the first point is a sensor break
+      if(ysi_pts$dat[i+1]){ # the second point is data
+        yd[a:n, colname1] <- yd[a:n, colname1] + meas_p2 - sens_p2
+        
+      } #don't need an else, if the 2nd point is also a sensor break, do nothing
+    }
+  }
+  return(yd[, colname1])
+}
+
+#################
 # #PlotDOPreds
 # Al_plot_DO_preds <- function (DO_preds, y_var = c("conc", "pctsat", "ddodt"), 
 #           style = c("ggplot2", "dygraphs"), y_lim = list(conc = c(NA, NA), pctsat = c(NA, NA), ddodt = c(NA, NA)), 

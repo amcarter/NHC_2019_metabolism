@@ -19,9 +19,8 @@ norm_depths = data.frame(site = c("NHC","PM","CBP","WB","WBP","PWC","UNHC"),
 # 1. Load Data ####
 # load field notes
 fnotes <- read_csv("water_chemistry/nhc_ysi_data.csv") %>%
-  mutate(DateTime_EST = round_date(as.POSIXct(paste(date, as.character(time)), 
-                                   format = "%m/%d/%Y %H:%M:%S", tz = "EST"),
-                                   unit = '15 minutes'))
+  mutate(DateTime_EST = round_date(ymd_hms(paste(date, as.character(time)), 
+                                    tz = "EST"), unit = '15 minutes'))
 spdepths <- read_csv("water_chemistry/streampulse_depth_measurements_2017.csv") %>%
   filter(!is.na(Date)) %>%
   mutate(DateTime_EST = round_date(as.POSIXct(paste(Date, as.character(Time)), 
@@ -32,17 +31,17 @@ spdepths <- read_csv("water_chemistry/streampulse_depth_measurements_2017.csv") 
   filter(site %in% c("NHC", "UNHC"))
 
 
-fnotes <- bind_rows(fnotes, spdepths)
-depths <- fnotes %>%
-  mutate(date = as.Date(DateTime_EST)) %>%
-  select(site, date, waterdepth_cm) %>%
-  filter(date > as.Date("2018-01-01") & !(site %in% c("PWC","MC751"))) %>%
-  group_by(date, site) %>%
-  summarize_all(mean, na.rm = T) %>%
-  ungroup() %>%
-  pivot_wider(names_from = site, values_from = waterdepth_cm) %>%
-  mutate_all(na.approx, na.rm = F) %>%
-  pivot_longer(cols = -date, names_to = "site", values_to = "depth_cm")
+# fnotes <- bind_rows(fnotes, spdepths)
+# depths <- fnotes %>%
+#   mutate(date = as.Date(DateTime_EST)) %>%
+#   select(site, date, waterdepth_cm) %>%
+#   filter(date > as.Date("2018-01-01") & !(site %in% c("PWC","MC751"))) %>%
+#   group_by(date, site) %>%
+#   summarize_all(mean, na.rm = T) %>%
+#   ungroup() %>%
+#   pivot_wider(names_from = site, values_from = waterdepth_cm) %>%
+#   mutate_all(na.approx, na.rm = F) %>%
+#   pivot_longer(cols = -date, names_to = "site", values_to = "depth_cm")
 
 ggplot(depths, aes(x = date, y = depth_cm, color = site)) +
   geom_line()
@@ -53,6 +52,10 @@ dat <- read_csv("metabolism/processed/CBP.csv") %>%
   mutate(DateTime_EST = force_tz(DateTime_EST, tz = "EST"))
 fn <- fnotes %>% filter(site == "CBP")
 
+dat <- read_csv("metabolism/processed/NHC.csv") %>%
+  mutate(DateTime_EST = force_tz(DateTime_EST, tz = "EST")) %>%
+  select(DateTime_EST, NHC_lvl = level_m) %>%
+  right_join(dat)
 # explore data
 lvl <- xts(x = dat$level_m, order.by = dat$DateTime_EST)
 dygraph(lvl)
@@ -73,7 +76,7 @@ s1 <- fn %>%
   filter(DateTime_EST <= as.POSIXct("2019-06-03 16:00:00", tz = "EST")) %>%
   mutate(delta = waterdepth_cm/100 - level_m,
          level_m = level_m + mean(delta, na.rm = T)) %>%
-  select(DateTime_EST, level_m) %>%
+  select(DateTime_EST, level_m, NHC_lvl) %>%
   arrange(DateTime_EST)
 
 s1$level_m[s1$DateTime_EST >= as.POSIXct("2019-05-08 15:30:00", tz = "EST")] <- .095 + 
@@ -102,14 +105,20 @@ s2 <- df1 <- transform(df1, delta = na.approx(delta, d)) %>%
   rename(DateTime_EST = d) %>%
   left_join(dat) %>%
   mutate(level_m = level_m - delta) %>% 
-  select(DateTime_EST, level_m)
+  select(DateTime_EST, level_m, NHC_lvl)
 
 plot(dat$DateTime_EST, dat$level_m, type = "l")
 points(fn$DateTime_EST, fn$waterdepth_cm/100, col = 2)
 lines(s1$DateTime_EST, s1$level_m, col = 3)  
 lines(s2$DateTime_EST, s2$level_m, col = 3)  
+
+plot(dat$NHC_lvl, dat$level_m)
+ points(s1$NHC_lvl, s1$level_m, col = 3)  
+ points(s2$NHC_lvl, s2$level_m, col = 3)  
+
 ss <- bind_rows(s1, s2) %>%
   rename(l = level_m) %>%
+  select(-NHC_lvl)
   right_join(dat)
 ss$level_m[which(!is.na(ss$l))] <- ss$l[which(!is.na(ss$l))]
 dat <- ss %>% select(-l)
@@ -135,7 +144,7 @@ dat <- ss %>% select(-l) %>%
   arrange(DateTime_EST)
 
 lines(dat$DateTime_EST, dat$level_m, col = 4)
-
+points(dat$NHC_lvl, dat$level_m, col = 4, pch = 20)
 # get rid of a few more impossible points:
 dat <- dat %>% 
   mutate(depth = ifelse(dat$discharge < 0.01 & dat$level_m > 1, NA, depth),
