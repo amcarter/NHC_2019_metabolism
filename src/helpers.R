@@ -16,13 +16,14 @@ rle_custom = function(x){
 
 
 # Drift corrector ####
-
+# yd is a dataframe with a column of the data you want corrected and 
+# a column of the point measurements for correction.
 drift_correct <-  function(yd,  colname1, colname2){ 
-  gaps <- rle_custom(is.na(yd$DO.obs)) %>%
+  gap <- rle_custom(is.na(yd[,colname1])) %>%
     filter(values == 0)
-  ends <- data.frame(pt = c(gaps$starts, gaps$stops),
+  ends <- data.frame(pt = c(gap$starts, gap$stops),
                      dat = FALSE) 
-  ysi_pts <- data.frame(pt = which(!is.na(yd$ysi_DO)),
+  ysi_pts <- data.frame(pt = which(!is.na(yd[, colname2])),
                         dat = TRUE) %>%
     bind_rows(ends) %>%
     arrange(pt)
@@ -36,7 +37,7 @@ drift_correct <-  function(yd,  colname1, colname2){
     sens_p1 <- yd[a, colname1, drop = TRUE]
     meas_p2 <- yd[b, colname2, drop = TRUE]
     sens_p2 <- yd[b, colname1, drop = TRUE]
-    if(is.na(meas_p1) | is.na(meas_p2)) next
+    if(is.na(meas_p1) & is.na(meas_p2)) next
     
     if(ysi_pts$dat[i]){ # the first point is a measurement
       if(is.na(sens_p1)) next

@@ -63,129 +63,105 @@ qq <- sdat %>%
   select(site = sitecode, location_m = distance_m) %>%
   right_join(qq, by = "site")
 write_csv(qq, "data/rating_curves/calculated_discharge.csv")  
-
 # 3. Add a new point to the Q file ####
 # this step is likely to be custom for each site/date, so we'll do one at a time
 
-# write_csv(qq, "data/rating_curves/calculated_discharge.csv")  
-qq <- read_csv("data/rating_curves/calculated_discharge.csv")  
+qq <- read_csv("data/rating_curves/calculated_discharge.csv") %>%
+  mutate(DateTime_EST = round_date(ymd_hms(paste(date, time), tz = "EST"),
+                                   unit = "15 minutes"))
 
 # 4. add stages ####
 # for the points that don't have it get from LL
 # for the points that do, compare with LL
 
 # NHC
-nhc <- read_csv("data/metabolism/processed/NHC.csv") %>%
-  group_by(date = as.Date(DateTime_EST)) %>%
-  select(date, level_m, NHC_Q = discharge) %>%
-  summarize_all(mean, na.rm = T) %>%
-  mutate(site = "NHC") %>%
-  ungroup() 
-nhcq <- read_csv("data/metabolism/processed/UNHC.csv") %>%
-  group_by(date = as.Date(DateTime_EST)) %>%
-  select(date, UNHC_Q = discharge) %>%
-  summarize_all(mean, na.rm = T) %>%
-  full_join(nhc, by = "date") %>%
-  select(-site, -level_m) %>%
-  ungroup()
-pm <- read_csv("data/metabolism/processed/PM_lvl.csv") %>%
-  group_by(date = as.Date(DateTime_EST)) %>%
-  select(date, level_m) %>%
-  summarize_all(mean, na.rm = T) %>%
-  mutate(site = "PM") %>%
-  ungroup() 
-cbp <- read_csv("data/metabolism/processed/CBP_lvl.csv") %>%
-  group_by(date = as.Date(DateTime_EST)) %>%
-  select(date, level_m) %>%
-  summarize_all(mean, na.rm = T) %>%
-  mutate(site = "CBP") %>%
-  ungroup() 
-wb <- read_csv("data/metabolism/processed/WB_lvl.csv") %>%
-  group_by(date = as.Date(DateTime_EST)) %>%
-  select(date, level_m) %>%
-  summarize_all(mean, na.rm = T) %>%
-  mutate(site = "WB") %>%
-  ungroup() 
-wbp <- read_csv("data/metabolism/processed/WBP_lvl.csv") %>%
-  group_by(date = as.Date(DateTime_EST)) %>%
-  select(date, level_m) %>%
-  summarize_all(mean, na.rm = T) %>%
-  mutate(site = "WBP") %>%
-  ungroup() 
-unhc <- read_csv("data/metabolism/processed/UNHC.csv") %>%
-  group_by(date = as.Date(DateTime_EST)) %>%
-  select(date, level_m) %>%
-  summarize_all(mean, na.rm = T) %>%
-  mutate(site = "UNHC") %>%
-  ungroup() 
+levels <- read_csv("data/rating_curves/NHC_UNHC_corrected_level.csv") %>%
+  mutate(DateTime_EST = with_tz(DateTime_UTC, tz = "EST")) %>%
+  select(DateTime_EST, level_unhc, level_nhc) 
+levels <- read_csv("data/metabolism/processed/PM_lvl.csv") %>%
+  mutate(DateTime_EST = with_tz(DateTime_EST, tz = "EST")) %>%
+  select(DateTime_EST, level_pm = level_m) %>%
+  full_join(levels)
+levels <- read_csv("data/metabolism/processed/CBP_lvl.csv") %>%
+  mutate(DateTime_EST = with_tz(DateTime_EST, tz = "EST")) %>%
+  select(DateTime_EST, level_cbp = level_m) %>%
+  full_join(levels)
+levels <- read_csv("data/metabolism/processed/WB_lvl.csv") %>%
+  mutate(DateTime_EST = with_tz(DateTime_EST, tz = "EST")) %>%
+  select(DateTime_EST, level_wb = level_m) %>%
+  full_join(levels)
+levels <- read_csv("data/metabolism/processed/WBP_lvl.csv") %>%
+  mutate(DateTime_EST = with_tz(DateTime_EST, tz = "EST")) %>%
+  select(DateTime_EST, level_wbp = level_m) %>%
+  full_join(levels)
+levels <- read_csv("data/metabolism/processed/PWC.csv") %>%
+  mutate(DateTime_EST = with_tz(DateTime_EST, tz = "EST")) %>%
+  select(DateTime_EST, level_pwc = level_m) %>%
+  full_join(levels) %>%
+  arrange(DateTime_EST)
+par(mfrow = c(2,3))
+plot(log(levels$level_nhc), log(levels$level_unhc), pch = 20)
+unhcab <- lm(log(level_unhc) ~ log(level_nhc), levels)$coefficients
+abline(unhcab)
+plot(log(levels$level_nhc), log(levels$level_pm), pch = 20, col = 2) 
+pmab <- lm(log(level_pm) ~log(level_nhc), levels)$coefficients
+abline(pmab)
+plot(log(levels$level_nhc), log(levels$level_cbp), pch = 20, col = 3)
+cbpab <- lm(log(level_cbp) ~log(level_nhc), levels)$coefficients
+abline(cbpab)
+plot(log(levels$level_nhc), log(levels$level_wb), pch = 20, col = 4)
+wbab <- lm(log(level_wb) ~log(level_nhc), levels)$coefficients
+abline(wbab)
+plot(log(levels$level_nhc), log(levels$level_wbp), pch = 20, col = 5)
+wbpab <- lm(log(level_wbp) ~log(level_nhc), levels)$coefficients
+abline(wbpab)
+plot(log(levels$level_nhc), log(levels$level_pwc), pch = 20, col = 6)
+pwcab <- lm(log(level_pwc) ~log(level_nhc), levels)$coefficients
+abline(pwcab)
 
-all <- nhc %>%
-  select(-NHC_Q) %>%
-  bind_rows(pm, cbp, wb, wbp, unhc) %>%
-  pivot_wider(names_from = "site", values_from = "level_m") %>%
-  arrange(NHC)
+# grab level for the day/time of Q measurement
+qql <- qq %>% 
+  left_join(levels) %>%
+  mutate(level = case_when(site == "NHC" ~ level_nhc,
+                           site == "PM" ~ level_pm,
+                           site == "CBP" ~ level_cbp,
+                           site == "WB" ~ level_wb,
+                           site == "WBP" ~ level_wbp,
+                           site == "PWC" ~ level_pwc,
+                           site == "UNHC" ~ level_unhc),
+         level_mod = case_when(site == "PM" ~ 
+                                 exp(pmab[1] + pmab[2] * log(level_nhc)),
+                               site == "CBP" ~
+                                 exp(cbpab[1] + cbpab[2] * log(level_nhc)),
+                               site =="WB" ~ 
+                                 exp(wbab[1] + wbab[2] * log(level_nhc)),
+                               site == "WBP" ~
+                                 exp(wbpab[1] + wbpab[2] * log(level_nhc)),
+                               site == "UNHC" ~
+                                 exp(unhcab[1] + unhcab[2] * log(level_nhc)))) %>%
+  select(-level_pm, -level_cbp, -level_wb,
+         -level_wbp, -level_pwc, -notes)
 
-plot(all$NHC, all$UNHC,pch = 20, xlim = c(.4, 1.5), ylim = c(.2, 1.5))
-points(all$NHC, all$PM,pch = 20, col = 2)
-points(all$NHC, all$CBP, pch = 20,col = 3)
-points(all$NHC, all$WB, pch = 20,col = 4)
-points(all$NHC, all$WBP, pch = 20,col = 5)
+plot(qql$stage_m, qql$level)
+abline(0,1)
 
-all %>%
-  filter(!is.na(CBP)) %>%
-  ggplot( aes(NHC, CBP, color = date)) +
-    geom_point()
-# there is an approximate linear relationship between level at NHC and
-# at the other sites, I will use this to fill in the level when it is missing
-qq <- read_csv("data/rating_curves/calculated_discharge.csv")
 
-m <- lm(PM ~ NHC, all)
-l.pm <- summary(m)$coefficients[,1]
-m <- lm(CBP ~ NHC, all)
-l.cbp <- summary(m)$coefficients[,1]
-m <- lm(WB ~ NHC, all)
-l.wb <- summary(m)$coefficients[,1]
-m <- lm(WBP ~ NHC, all)
-l.wbp <- summary(m)$coefficients[,1]
-m <- lm(UNHC ~ NHC, all)
-l.unhc <- summary(m)$coefficients[,1]
+# # the 9/22/2016 date is problematic
+# w <- which(tmp$date == as.Date("2016-09-22"))
+# tmp$level_m[w] <- NA
+ggplot(qql, aes(stage_m, level, color = site)) +
+  geom_point()+
+  geom_smooth(method = "lm")
 
-tmp <- all %>%
-  rename(NHC_level_m = NHC) %>%
-  right_join(qq, by = c("date")) %>%
-  mutate(level_m = case_when(grepl("PM", site) ~ PM,
-                             grepl("CBP", site) ~ CBP,
-                             grepl("WBP", site) ~ WBP,
-                             grepl("WB", site) ~ WB, 
-                             grepl("UNHC", site) ~ UNHC,
-                             grepl("NHC", site) ~ NHC_level_m)) %>%
-  select(-PM, -CBP, -WB, -WBP, -UNHC) %>%
-  mutate(level_m = case_when(!is.na(level_m) ~ level_m,
-                             grepl("PM", site) ~ l.pm[1] + l.pm[2] * NHC_level_m,
-                             grepl("CBP", site) ~ l.cbp[1] + l.cbp[2] * NHC_level_m,
-                             grepl("WBP", site) ~ l.wbp[1] + l.wbp[2] * NHC_level_m, 
-                             grepl("WB", site) ~ l.wb[1] + l.wb[2] * NHC_level_m,
-                             grepl("UNHC", site) ~ l.unhc[1] + l.unhc[2] * NHC_level_m))
-  
-
-# the 9/22/2016 date is problematic
-w <- which(tmp$date == as.Date("2016-09-22"))
-tmp$level_m[w] <- NA
-ggplot(tmp, aes(stage_m, level_m, color = site)) +
-  geom_point()
-#  geom_smooth(model = "lm")
-
-m <- lm(level_m ~ stage_m, tmp)
-ll <- summary(m)$coefficients[,1]
-qq_l <- tmp %>%
-  mutate(level_m = case_when(is.na(level_m) ~ ll[1] + ll[2]* stage_m, 
-                             !is.na(level_m) ~ level_m)) %>%
-  left_join(nhcq, by = "date")
+qq_l <- qql %>%
+  mutate(level = case_when(is.na(level) ~  stage_m,
+                           level > 1.6 ~ stage_m,
+                           !is.na(level) ~ level))
 
 # inspect data ####
 qq_l %>%
   filter(site == "NHC") %>%
-  ggplot(aes(level_m, discharge)) +
+  ggplot(aes(level, discharge)) +
   geom_point(aes(color = date), size = 2)
 
 # Assign proper discharges to the pool sections on days when a pool and 
@@ -215,37 +191,26 @@ qq_l$discharge[w[1]] <- qq_l$discharge[w[2]]
 qq_l$velocity_avg <- qq_l$discharge/qq_l$xc_area
 qq_l <- qq_l %>%
   filter(!grepl("riffle", site))
-
-# look across sites on the two dates where multiple were measured.
-
-a <- qq_l %>%
-  filter(date == as.Date("2020-06-19")) 
-data.frame(location_m = c(sdat$distance_m[sdat$sitecode =="NHC"],
-                          sdat$distance_m[sdat$sitecode =="UNHC"]),
-           discharge = c(a$NHC_Q[1], a$UNHC_Q[1])) %>%
-  bind_rows(a) %>%
-  ggplot(aes(location_m, discharge)) +
-  geom_point()
-
-# 6/19/20 is on the falling limb of a storm, while 8/23/20 is just low.
-# none of this makes any sense.
-write_csv(qq_l, "data/rating_curves/calculated_discharge_modified.csv")
+qq_l %>%
+  rename(DateTime_UTC = DateTime_EST) %>%
+write_csv("data/rating_curves/calculated_discharge_modified.csv")
 
 # Build Rating Curves ####
 nhc <- qq_l %>%
   filter(site =="NHC")
 unhc <- qq_l %>%
-  filter(site =="UNHC")
-m <- lm(log(discharge)~log(level_m), data = nhc)
+  filter(site =="UNHC") %>%
+  slice(-1)
+m <- lm(log(discharge)~log(level), data = nhc)
 m_coef <- summary(m)$coefficients[,1]
-plot(nhc$level_m, nhc$discharge)
+plot(nhc$level, nhc$discharge)
 lines(seq(0,2, by = .01), exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2])
-points(nhc$stage_m, nhc$discharge, col = 3)
-m <- lm(log(discharge)~log(stage_m), data = nhc)
+points(nhc$stage_m, nhc$discharge,pch = 20, col = 3)
+m <- lm(log(discharge)~log(level), data = unhc)
 m_coef <- summary(m)$coefficients[,1]
-lines(seq(0,2, by = .01), 
-      exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2], lty = 2)
-
+plot(unhc$level, unhc$discharge)
+lines(seq(0,2, by = .01), exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2])
+points(unhc$stage_m, unhc$discharge,pch = 20, col = 3)
 
 build_powerlaw_rc <- function(l, q, site){
   m <- lm(log(q)~log(l))
@@ -262,7 +227,20 @@ build_powerlaw_rc <- function(l, q, site){
 }
 
 rc <- data.frame()
-rc <- bind_rows(rc, build_powerlaw_rc(nhc$level_m, nhc$discharge, "NHC"))
-rc <- bind_rows(rc, build_powerlaw_rc(unhc$level_m, unhc$discharge, "UNHC"))
+rc <- bind_rows(rc, build_powerlaw_rc(nhc$level, nhc$discharge, "NHC"))
+rc <- bind_rows(rc, build_powerlaw_rc(unhc$stage_m, unhc$discharge, "UNHC"))
 
 write_csv(rc, "data/rating_curves/modified_ZQ_curves.csv")
+# look across sites on the two dates where multiple were measured. ####
+
+a <- qq_l %>%
+  filter(date == as.Date("2020-06-19")) 
+data.frame(location_m = c(sdat$distance_m[sdat$sitecode =="NHC"],
+                          sdat$distance_m[sdat$sitecode =="UNHC"]),
+           discharge = c(a$NHC_Q[1], a$UNHC_Q[1])) %>%
+  bind_rows(a) %>%
+  ggplot(aes(location_m, discharge)) +
+  geom_point()
+
+# 6/19/20 is on the falling limb of a storm, while 8/23/20 is just low.
+# none of this makes any sense.

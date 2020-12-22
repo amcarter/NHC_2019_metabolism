@@ -7,12 +7,16 @@
 # library(devtools)
 # install_github('streampulse/StreamPULSE', dependencies=TRUE)
 library(StreamPULSE)
+library(LakeMetabolizer)
 library(tidyverse)
 library(lubridate)
 library(zoo)
+library(xts)
+library(dygraphs)
 
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data")
 
+# load metadata ####
 # ZQdat_sp <- read_csv(file="siteData/NC_streampulseZQ_data.csv")
 ZQdat <- read_csv(file="rating_curves/modified_ZQ_curves.csv")
 wsAreas <- read_csv(file="siteData/NHCsite_watersheds.csv")
@@ -29,71 +33,227 @@ sites <- sites[1:7,] # get rid of MC751 and mud, they are not along same continu
 #dateRange <- c(min(sites$startdate.UTC), max(sites$enddate.UTC))
 #DateTime_UTC <- seq(dateRange[1], dateRange[2], by = 15*60)
 
-
+# load data from sp portal ####
 # read in data from SP portal for NHC and UNHC to get discharge
 NHC_dat <- request_data("NC_NHC",  
                         variables=c("AirPres_kPa", "AirTemp_C",
                                     "WaterPres_kPa", "WaterTemp_C"))
 
-NHC <- NHC_dat$data
-NHC$value[NHC$flagtype=="Bad Data"|NHC$flagtype=="Questionable"]<- NA
-NHC <- NHC %>% select(DateTime_UTC, value, variable)%>%
+NHC <- NHC_dat$data %>%
+  mutate(value = ifelse(flagtype %in% c("Bad Data", "Questionable"), 
+                        NA, value)) %>% 
+           select(DateTime_UTC, value, variable) %>%
   pivot_wider(names_from=variable, values_from=value) %>%
   select(DateTime_UTC, pressure_kPa=WaterPres_kPa, temp = WaterTemp_C, 
          AirTemp_C, AirPres_kPa)
 
-# remove NHC out of water pressure values (all below 103 from looking at graph)
-NHC$pressure_kPa[which(NHC$pressure_kPa<102)]<-NA
+plot_pres <- function(NHC, waterpres = "pressure_kPa", airpres = "AirPres_kPa"){
+  NHC %>% select(all_of(waterpres), all_of(airpres)) %>%
+    xts(order.by = NHC$DateTime_EST) %>%
+    dygraph() %>%
+    dyRangeSelector()
+}
 
-# fill in missing airpressure data
+plot_pres(NHC)
+# remove NHC out of water pressure values (all below 103 from looking at graph)
+NHC$pressure_kPa[which(NHC$pressure_kPa<102.5)]<-NA
+
+# fill in missing airpressure data ####
 
 NOAA_airpres <- StreamPULSE:::FindandCollect_airpres(sites$latitude[1], 
                                                      sites$longitude[1],
-                                     ymd_hms("2016-07-12 02:00:00"), 
-                                     ymd_hms("2020-11-01 05:00:00"))
+                                     min(NHC$DateTime_UTC), 
+                                     max(NHC$DateTime_UTC))
 
 NHC <- full_join(NHC, NOAA_airpres, by="DateTime_UTC")
 
-NHC[which(is.na(NHC$AirPres_kPa)),"AirPres_kPa"] <- NHC[which(is.na(NHC$AirPres_kPa)),"air_kPa"]
-NHC[which(is.na(NHC$AirTemp_C)),"AirTemp_C"] <- NHC[which(is.na(NHC$AirTemp_C)),"air_temp"]
+plot_pres(NHC, "air_temp", "AirTemp_C")
 
-NHC <- select(NHC, -air_kPa, -air_temp)
+# imported air pressure is systematically higher than SP air pressure
+diff <- mean(NHC$air_kPa - NHC$AirPres_kPa, na.rm = T)
+NHC <- NHC %>% 
+  mutate(air_kPa = air_kPa - diff,
+         AirPres_kPa = ifelse(is.na(AirPres_kPa), air_kPa, AirPres_kPa),
+         AirTemp_C = air_temp) %>%
+  select(-air_kPa, -air_temp)
 # NHC <- filter(NHC, DateTime_UTC > ymd_hms("2018-01-01 00:00:00"))
+# remove leading and ending NA's
+w <- range(which(!is.na(NHC$pressure_kPa)), which(!is.na(NHC$temp)))
+NHC <- NHC[(w[1]:w[2]),]
 
 UNHC_dat <- request_data("NC_UNHC", variables=c("WaterPres_kPa", "WaterTemp_C"))
-UNHC <- UNHC_dat$data
-UNHC$value[UNHC$flagtype=="Bad Data"|UNHC$flagtype=="Questionable"]<- NA
-UNHC <- UNHC %>% select(DateTime_UTC, value, variable)%>%
+UNHC <- UNHC_dat$data %>%
+  mutate(value = ifelse(flagtype %in% c("Bad Data", "Questionable"), 
+                        NA, value)) %>%
+  select(DateTime_UTC, value, variable) %>%
   pivot_wider(names_from=variable, values_from=value) %>%
   select(DateTime_UTC, UNHC.pressure_kPa=WaterPres_kPa, UNHC.temp = WaterTemp_C)
+# remove leading and ending NA's
+w <- range(which(!is.na(UNHC$UNHC.pressure_kPa)), which(!is.na(UNHC$UNHC.temp)))
+UNHC <- UNHC[(w[1]:w[2]),]
+# UNHC <- filter(UNHC, DateTime_UTC > ymd_hms("2018-01-01 00:00:00"))
 
-w <- which(UNHC$UNHC.pressure_kPa<101)
-w <- w[which(w<100000)]
-UNHC$UNHC.pressure_kPa[w]<-NA
-UNHC <- filter(UNHC, DateTime_UTC > ymd_hms("2018-01-01 00:00:00"))
-
-
-qq <- left_join(NHC, UNHC, by="DateTime_UTC")
-  
-# Calculate depth from water pressure and add sensor offset
+# Calculate depth from water pressure and add sensor offset ####
 # Depth = pressure_Pa = kg/ms2/(density_kg/m3*gravity_m/s2)
 # density is temperature dependent, for now I am assuming it's just 998 kg/m3
 sensor_offsets <- read_csv("siteData/sensor_offsets.csv")
-qq <- qq %>%
-  mutate(nhc.pressure_Pa = (pressure_kPa - AirPres_kPa)*1000,
-         nhc.level_m = nhc.pressure_Pa/(998 * 9.8) +
-           sensor_offsets[sensor_offsets$site == "NHC",]$offset_cm/100,
-         unhc.pressure_Pa = (UNHC.pressure_kPa - AirPres_kPa) * 1000,
-         unhc.level_m = unhc.pressure_Pa/(998 * 9.8) + 
-           sensor_offsets[sensor_offsets$site == "UNHC",]$offset_cm/100) %>%
-  mutate(unhc.level_m = ifelse(unhc.level_m < 0.24, NA, unhc.level_m)) %>%
-  select(DateTime_UTC, nhc.temp = temp, nhc.level_m,
+qq <- NHC %>%
+  mutate(nhc.pressure_Pa = (pressure_kPa - AirPres_kPa) * 1000,
+         nhc.level_m = nhc.pressure_Pa / (water.density(temp) * 9.8) + 
+           sensor_offsets[sensor_offsets$site == "NHC", ]$offset_cm / 100) %>%
+  select(DateTime_UTC, nhc.temp = temp, nhc.level_m, 
+         AirPres_kPa, AirTemp_C) 
+qq <- UNHC %>%
+  full_join(qq) %>%
+  mutate(unhc.pressure_Pa = (UNHC.pressure_kPa - AirPres_kPa) * 1000,
+         unhc.level_m = unhc.pressure_Pa / (water.density(UNHC.temp) * 9.8) +
+           sensor_offsets[sensor_offsets$site == "UNHC", ]$offset_cm / 100) %>%
+  select(DateTime_UTC, nhc.temp, nhc.level_m, 
          unhc.temp = UNHC.temp, unhc.level_m,
-         AirPres_kPa)
+         AirPres_kPa, AirTemp_C) %>%
+  arrange(DateTime_UTC)
+
+# join with field depth measurements to correct level ####
+ysi <- read_csv("water_chemistry/all_nhc_ysi_data.csv") %>%
+  mutate(DateTime_EST = with_tz(DateTime_EST, tz = "EST")) %>%
+  select(site, DateTime_EST, watertemp_C, waterdepth_cm) 
+
+nhc <- qq %>%
+  mutate(DateTime_EST = with_tz(DateTime_UTC, tz = "EST")) %>%
+  select(DateTime_EST, temp = nhc.temp, level_m = nhc.level_m) %>%
+  left_join(ysi[ysi$site == "NHC",]) %>%
+  mutate(waterdepth_m = waterdepth_cm / 100) %>%
+  select(-site, -waterdepth_cm)
+
+plotdd <- function(nhc){
+  nhc %>%
+    select(waterdepth_m, level_m) %>%
+    xts(order.by = nhc$DateTime_EST) %>%
+    dygraph() %>%
+    dyRangeSelector()
+}
+
+plotdd(nhc)
+# Fill in missing dates
+nhc <- data.frame(DateTime_EST = seq(min(nhc$DateTime_EST), 
+                                     max(nhc$DateTime_EST),
+                                     by = '15 min')) %>%
+  left_join(nhc)
+
+# first, piece together places where chunks are clearly shifted
+# these jumps occur at: (dttm is last pt of data before jump)
+gaps <- rle_custom(is.na(nhc$level_m)) %>%
+  filter(values == 1, lengths < 50) %>%
+  mutate(datetime = nhc$DateTime_EST[starts],
+         starts = starts - 1,
+         stops = stops + 1)
+big_gaps <- rle_custom(is.na(nhc$level_m)) %>%
+  filter(values == 1, lengths > 96*3) %>%
+  mutate(starts = starts - 1)
+
+# these gaps look like snapping them together would be incorrect
+gaps <- gaps %>% 
+  slice(-c(11, 16, 21, 66, 82, 84, 94, 99:nrow(gaps))) %>%
+  mutate(lvl_start = nhc$level_m[starts],
+         lvl_stop = nhc$level_m[stops],
+         jump = lvl_stop - lvl_start) %>%
+  filter(jump >= 0.01 | jump <= -.01) # only adjust for gaps larger than 1 cm
+
+n <- nrow(nhc)
+for(i in 2:nrow(gaps)){
+  end_chunk = min(big_gaps$starts[which(big_gaps$starts >= gaps$stops[i])])
+  nhc$level_m[gaps$stops[i]:end_chunk] <- 
+    nhc$level_m[gaps$stops[i]:end_chunk] - gaps$jump[i]
+}
+nhc$level_m <- na.approx(nhc$level_m, maxgap = 50, na.rm = F)
+nhc$level_d <- drift_correct(nhc, "level_m", "waterdepth_m")
+plot_pres(nhc, "level_m", "level_d")
+
+nhc <- nhc %>%
+  select(-level_m) %>%
+  rename(level_m = level_d) #%>%
+  plotdd()
+
+w <- range(which(!is.na(nhc$level_m)))
+nhc <- nhc[w[1]:w[2],]
+# uunhc####
+ysi <- read_csv("water_chemistry/all_nhc_ysi_data.csv") %>%
+  mutate(DateTime_EST = with_tz(DateTime_EST, tz = "EST")) %>%
+  select(site, DateTime_EST, watertemp_C, waterdepth_cm) 
+
+unhc <- qq %>%
+  mutate(DateTime_EST = with_tz(DateTime_UTC, tz = "EST")) %>%
+  select(DateTime_EST, temp = unhc.temp, level_m = unhc.level_m) %>%
+  left_join(ysi[ysi$site == "UNHC",]) %>%
+  mutate(waterdepth_m = waterdepth_cm / 100) %>%
+  select(-site, -waterdepth_cm)
+
+#plotdd(unhc)
+
+# Fill in missing dates
+unhc <- data.frame(DateTime_EST = seq(min(unhc$DateTime_EST), 
+                                     max(unhc$DateTime_EST),
+                                     by = '15 min')) %>%
+  left_join(unhc)
+
+# first, piece together places where chunks are clearly shifted
+# these jumps occur at: (dttm is last pt of data before jump)
+gaps <- rle_custom(is.na(unhc$level_m)) %>%
+  filter(values == 1, lengths < 50) %>%
+  mutate(datetime = unhc$DateTime_EST[starts],
+         starts = starts - 1,
+         stops = stops + 1)
+tmp <- data.frame(starts = c(which(unhc$DateTime_EST ==
+                                     ymd_hms("2017-05-12 12:30:00", 
+                                             tz = "EST")),
+                             which(unhc$DateTime_EST == 
+                                     ymd_hms("2017-07-12 10:15:00"))))
+tmp$stops <- tmp$starts - 1
+big_gaps <- rle_custom(is.na(unhc$level_m)) %>%
+  filter(values == 1, lengths > 96*3) %>%
+  mutate(starts = starts - 1)
+
+# these gaps look like snapping them together would be incorrect
+gaps <- gaps %>% 
+  slice(-c(34,52)) %>%
+  bind_rows(tmp) %>%
+  mutate(lvl_start = unhc$level_m[starts],
+         lvl_stop = unhc$level_m[stops],
+         jump = lvl_stop - lvl_start) %>%
+  filter(jump >= 0.01 | jump <= -.01) # only adjust for gaps larger than 1 cm
+
+n <- nrow(unhc)
+for(i in 2:nrow(gaps)){
+  end_chunk = min(big_gaps$starts[which(big_gaps$starts >= gaps$stops[i])])
+  unhc$level_m[gaps$stops[i]:end_chunk] <- 
+    unhc$level_m[gaps$stops[i]:end_chunk] - gaps$jump[i]
+}
+unhc$level_m <- na.approx(unhc$level_m, maxgap = 50, na.rm = F)
+unhc$level_d <- drift_correct(unhc, "level_m", "waterdepth_m")
+plot_pres(unhc, "level_m", "level_d")
+
+unhc <- unhc %>%
+  select(-level_m) %>%
+  rename(level_m = level_d) #%>%
+  plotdd()
+
+w <- range(which(!is.na(unhc$level_m)))
+unhc <- unhc[w[1]:w[2],]
+
+qq <- unhc %>%
+  rename(temp_unhc = temp, level_unhc = level_m) %>%
+  select(DateTime_EST, temp_unhc, level_unhc) %>%
+  full_join(nhc, by = "DateTime_EST") %>%
+  arrange(DateTime_EST) %>%
+  select(DateTime_EST, temp_unhc, temp_nhc = temp,
+         level_unhc, level_nhc = level_m) 
+
+plot(qq$level_unhc, qq$level_nhc)
 
 # Calculate discharge from rating curves ####
 # Q = a * level ^ b
-par(mfrow = c(1,2))
+# figure out where this ZQdat_sp is coming from
+
 m <- lm(log(discharge_cms) ~ log(level_m),
       data = ZQdat_sp[ZQdat_sp$site == "NHC",])
 ab.nhc_sp <- summary(m)$coefficients[,1]
@@ -121,6 +281,14 @@ lines(seq(.1, 2, by = .01),
 lines(seq(.1, 2, by = .01),
       exp(as.numeric(ab.unhc[1]) + 
             as.numeric(ab.unhc[2]) * log(seq(.1, 2, by = .01))))
+par(mfrow = c(1,2))
+et_cm/100) %>%
+         unhc.temp = UNHC.temp, unhc.level_m,
+         AirPres_kPa)
+
+sets$site == "NHC",]$offset_cm/100,
+
+qq <- left_join(NHC, UNHC, by="DateTime_UTC")
 
 Qdat <- qq %>%
   mutate(nhc.discharge = exp(as.numeric(ab.nhc[1])

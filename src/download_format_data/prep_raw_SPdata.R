@@ -110,10 +110,12 @@ prep_file <- function(filename, sites, Qdat, DQ){
 # load ysi data
 ysi <- read_csv("water_chemistry/nhc_ysi_data.csv") %>%
   mutate(DateTime_EST = round_date(ymd_hms(paste(date, time), tz = "EST"), 
-                                   unit = '15 minutes'),
-         ysi_level = waterdepth_cm/100) %>%
-  select(site, DateTime_EST, time, ysi_temp = watertemp_C, 
-         ysi_DO = DO_mgL, ysi_level)
+                                   unit = '15 minutes')) 
+ysi <- read_csv("water_chemistry/sp_nhc_ysi_data.csv") %>%
+      bind_rows(ysi) %>%
+      mutate(ysi_level = waterdepth_cm/100) %>% 
+      select(site, DateTime_EST, time, ysi_temp = watertemp_C, 
+             ysi_DO = DO_mgL, ysi_level)
 
 correct_file <- function(dat, ysi){
   
@@ -145,10 +147,19 @@ correct_file <- function(dat, ysi){
 # 7. Run for files and check output ####
 # for(i in 1:length(filelist)){
 
-i=1
+i=2
+
+
   filename <- filelist[i]
   dat <- prep_file(filename, sites, Qdat, DQ)
   dat <- correct_file(dat, ysi)
+# ysi %>% filter(site == dat$site[1]) %>% 
+#   right_join(dat) %>%
+#   arrange(DateTime_EST) %>%
+#   select(level_m, ysi_level) %>%
+#   xts(order.by = dat$DateTime_EST) %>%
+#   dygraph() %>%
+#   dyRangeSelector()
   # check corrections  
   cor <- ysi %>% 
     filter(site == dat$site[1]) %>%

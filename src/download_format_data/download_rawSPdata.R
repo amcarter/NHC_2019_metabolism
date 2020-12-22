@@ -31,6 +31,7 @@ sites$enddate.EST <- as.POSIXct(sites$enddate.UTC,
 # subset for the sites we actually want:
 nhc_sites <- sites[c(1:5,7),]
 mud_sites <- sites[8:9,]
+# nhc_sites <- sites[c(1,7),]
 # # find date range of available data for each site
 # for(i in 1:nrow(sites)){
 #    tmp <- query_available_data("NC",sites[i,]$sitecode)
@@ -41,7 +42,7 @@ mud_sites <- sites[8:9,]
 
 # Download data from streampulse for sampling sites.
 # dateRange <- c(sites$startdate.EST[2], sites$enddate.EST[2])
-  
+
 # download all the data for each at site:
 for(i in 1:nrow(nhc_sites)){
   vars <- as.character(unlist(
