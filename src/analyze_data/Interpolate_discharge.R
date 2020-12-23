@@ -485,31 +485,33 @@ NHC_UNHC_Q_interp <- select(qmm, DateTime_UTC,
 write_csv(NHC_UNHC_Q_interp, "rating_curves/NHC_UNHC_Q.csv")
 
 # Interpolate discharge ####
+qmm <- read_csv("rating_curves/NHC_UNHC_Q.csv", guess_max = 10000)
 sites <- read_csv("siteData/NHCsite_metadata.csv") %>%
   slice(1:7)
-newQdat <- data.frame(matrix(NA, nrow=nrow(qmm), ncol = (1+nrow(sites))))
-colnames(newQdat)<- c("DateTime_UTC",paste(sites$sitecode, "Q", sep="."))
-
-newQdat$DateTime_UTC <- qmm$DateTime_UTC
-newQdat$NHC.Q <- qmm$discharge_nhc_mod
-newQdat$UNHC.Q <- qmm$discharge_unhc_mod
-
+newQdat <- qmm %>%
+  select(DateTime_UTC, AirPres_kPa, NHC.Q = NHC_Q, UNHC.Q = UNHC_Q, notes) %>%
+  mutate(PM.Q = NA,
+         CBP.Q = NA,
+         WB.Q = NA,
+         WBP.Q = NA,
+         PWC.Q = NA) %>%
+  filter(DateTime_UTC >= ymd_hms("2019-03-01 00:00:00")) %>%
+  as.data.frame()
+         
 for(i in which(!is.na(newQdat$NHC.Q))){
   df <- data.frame(Q = c(newQdat$NHC.Q[i], newQdat$UNHC.Q[i]), 
                    area = c(wsAreas$ws_area.km2[c(1,7)]))
   m <- lm(Q ~ area, data=df)
   a <- summary(m)$coefficients[,1]
   if(length(a) != 2){ next }
-  Qnew <- a[1] + a[2] * sites$ws_area.km2[2:6]
-  newQdat[i,3:7] <- Qnew
+  Qnew <- a[1] + a[2] * sites$ws_area.km2[2:6, drop = T]
+  newQdat[i, 6:10] <- Qnew
   if(i %% 5000 == 0){print(newQdat$DateTime_UTC[i])}
 }
 
-newQdat <-  NHC_UNHC_Q_interp %>%
-  select(DateTime_UTC, AirPres_kPa, notes) %>%
-  full_join(newQdat, by="DateTime_UTC")
 write_csv(newQdat, path = "rating_curves/interpolatedQ_allsites_modified.csv")
-plot(newQdat$DateTime_UTC, newQdat$NHC.Q, col = "grey80", type = "l", log = "y")
+plot(newQdat$DateTime_UTC, newQdat$UNHC.Q, col = "grey80", type = "l", log = "y")
+lines(newQdat$DateTime_UTC, newQdat$NHC.Q, col = "grey80")
 lines(newQdat$DateTime_UTC, newQdat$PM.Q, col = "grey60")
 lines(newQdat$DateTime_UTC, newQdat$CBP.Q, col = "grey50")
 lines(newQdat$DateTime_UTC, newQdat$WB.Q, col = "grey40")
