@@ -10,9 +10,10 @@ setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/
 source("../src/helpers.R")
 source("../src/analyze_data/calc_discharge_from_crosssection.r")
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/")
+sites <- read_csv("siteData/NHCsite_metadata.csv") %>% 
+  slice(1:7)
 
 # 1. load raw data files and metadata ####
-sites <- read_csv("siteData/NHCsite_metadata.csv")
 
 # longitudinal survey data of widths and habitat types from Feb/Mar 2019
 marlong <- read_csv("longitudinal_sampling/nhc_habitat_survey_20190307.csv") %>%
@@ -79,7 +80,7 @@ long <- long %>%
          width_m = na.approx(width_m, na.rm = F)) %>%
   select(-tat, -hab, -n)
 
-long$width_m[1] <- 15
+long$width_m[1] <- 12
 
 
 
@@ -198,6 +199,26 @@ write_csv(study_reaches, "reach_characterization/nhc_habitat_dimensions_by_reach
 
 nhc_xc <- read_csv("reach_characterization/nhc_channel_crosssections.csv") 
 
+# get discharge for these dates
+q <- read_csv("rating_curves/NHC_UNHC_Q.csv", guess_max = 10000) %>%
+  mutate(date = as.Date(with_tz(DateTime_UTC, tz = "EST"))) %>%
+  filter(date %in% unique(nhc_xc$date) | 
+           date %in% as.Date(c("2019-03-07", "2019-10-09"))) %>%
+  select(-DateTime_UTC, -notes) %>%
+  group_by(date) %>%
+  summarize_all(mean, na.rm = T)
+
+# calculate Q at all sites on longitudinal survey days
+qall <- sites %>%
+  select(site = sitecode, 
+         wsarea = ws_area.km2, 
+         distance_m) %>%
+  mutate(oct9 = c(q$NHC_Q[4], rep(NA, 5), q$UNHC_Q[4]),
+         mar7 = c(q$NHC_Q[3], rep(NA, 5), q$UNHC_Q[3])) %>%
+  mutate(oct9 = na.approx(oct9, x = wsarea),
+         mar7 = na.approx(mar7, x = wsarea))
+
+
 nhc_reaches <- data.frame()
 for(s in c("nhc","unhc")){
   for(d in seq(0,1000, by = 100)){    
@@ -243,3 +264,168 @@ dev.off()
 # save file with reach characterization calculations
 write_csv(nhc_reaches, "reach_characterization/nhc_channel_crosssections_calculated.csv")
 
+# calculate average depths based on thalweg depths ####
+
+m <- lm(depth_avg ~ depth_max, nhc_reaches)
+a <- summary(m)$coefficients[,1]
+# pools <- nhc_reaches %>%
+#   filter(habitat == "pool")
+# rifs <- nhc_reaches %>%
+#   filter(habitat != "pool")
+mp <- lm(xc_area ~ (depth_max), nhc_reaches)
+ap <- summary(mp)$coefficients[,1]
+# mp1 <- lm(xc_area ~ (I(depth_max ^2) + depth_max), nhc_reaches)
+# ap1 <- summary(mp1)$coefficients[,1]
+mw <- lm(width_m ~ mardepth_m, long)
+aw <- summary(mw)$coefficients[,1]
+# mr <- lm(xc_area ~ depth_max, rifs)
+# ar <- summary(mr)$coefficients[,1]
+
+cchars <- long %>% 
+  mutate(octavg_depth = a[1] + a[2] * octdepth_m,
+         maravg_depth = a[1] + a[2] * mardepth_m,
+         oct_xcarea = ap[1] + ap[2] * octdepth_m,
+         mar_xcarea = ap[1] + ap[2] * mardepth_m,
+         oct_width = aw[1] + aw[2] * octdepth_m,
+         mar_width = aw[1] + aw[2] * mardepth_m)
+         
+plot(cchars$mardepth_m, cchars$maravg_depth, pch = 20)
+points(cchars$octdepth_m, cchars$octavg_depth, pch = 20, col = 3)
+points(long$mardepth_m, long$width_m, pch = 20, col = 5)
+points(nhc_reaches$depth_max, nhc_reaches$depth_avg, pch = 20, col = 5)
+
+# the depth to avg depth relationship is great, the others, not so much!
+
+specs <- q %>% 
+  select(-AirPres_kPa) %>%
+  pivot_longer(cols = c(2:5)) %>%
+  mutate(site = substr(name, 1, 3),
+         site = ifelse(site == "NHC", site, "UNHC")) %>%
+  pivot_wider(id_cols = c("date", "site"), 
+              names_from = "name", values_from = "value") %>%
+  mutate(level = case_when(site == "NHC" ~ NHC_level,
+                           site == "UNHC" ~UNHC_level),
+         discharge = case_when(site == "NHC" ~ NHC_Q,
+                               site == "UNHC" ~ UNHC_Q)) %>%
+  select(date, site, level, discharge) %>%
+  mutate(avg_depth = 0,
+         avg_xcarea = 0,
+         avg_width = 0,
+         avg_thwgdepth = 0) %>%
+  slice(c(-2,-3))
+
+nhc <- nhc_reaches %>%
+  group_by(site) %>%
+  select(site,depth_avg,  xc_area, width, depth_max) %>%
+  summarize_all(mean)
+specs[1:2,5:8] <- nhc[,2:5]
+
+cchars <- data.frame(distance_m = seq(0, max(cchars$distance_m), by = 1)) %>%
+  left_join(cchars) %>%
+  mutate(mar_avg_depth = na.approx(maravg_depth),
+         oct_avg_depth = na.approx(octavg_depth),
+         mar_xcarea = na.approx(mar_xcarea),
+         oct_xcarea = na.approx(oct_xcarea),
+         mar_width = na.approx(width_m),
+         oct_width = na.approx(oct_width),
+         mar_thwgdepth = na.approx(mardepth_m),
+         oct_thwgdepth = na.approx(octdepth_m),
+         group = case_when(distance_m %in% seq(0,1000) ~ "NHC",
+                           distance_m %in% seq(1570,2570) ~ "PM",
+                           distance_m %in% seq(3450,4450) ~ "CBP",
+                           distance_m %in% seq(5950,6950) ~ "WB",
+                           distance_m %in% seq(6120,7120) ~ "WBP",
+                           distance_m %in% seq(6300,7300) ~ "PWC")) %>%
+  select(mar_avg_depth, oct_avg_depth, 
+         mar_xcarea, oct_xcarea, 
+         mar_width, oct_width, 
+         mar_thwgdepth, oct_thwgdepth,
+         group) %>%
+  group_by(group) %>%
+  summarize_all(mean)
+
+mchars <- cchars %>% 
+  select(site = group, 
+         colnames(cchars)[which(grepl("mar", colnames(cchars)))])%>%
+  slice(-7) %>%
+  left_join(qall[,c(1,5)])
+colnames(mchars) <- c("site", "avg_depth","avg_xcarea", 
+                      "avg_width", "avg_thwgdepth", "discharge")
+mchars$date <- as.Date("2019-03-07")
+ochars <- cchars %>% 
+  select(site = group, 
+         colnames(cchars)[which(grepl("oct", colnames(cchars)))]) %>%
+  slice(-7) %>%
+  left_join(qall[,c(1,4)])
+colnames(ochars) <- c("site", "avg_depth","avg_xcarea", 
+                      "avg_width", "avg_thwgdepth", "discharge")
+ochars$date <- as.Date("2019-10-09")
+specs <- bind_rows(specs[1:2,], mchars, ochars)
+
+
+# Calculate Depth by Q relationships ####
+DQ <- data.frame(sitename = c("NHC","PM","CBP","WB","WBP","PWC","UNHC"),
+                 c_m = rep(0.409, 7),   # depth at unit discharge
+                 f = rep(.294, 7))
+
+qmod = seq(0,1.5, by = .01)
+# NHC (3 points)
+site <- "NHC"
+dat <- specs %>% 
+  filter(site == !! site)
+c = DQ$c_m[DQ$site == site]
+f = DQ$f[DQ$site == site]
+plot(dat$discharge, dat$avg_depth, pch = 19)
+lines(qmod, c * qmod ^ f, lty = 2)
+a <- summary(lm(log(avg_depth) ~ log(discharge), dat))$coefficients[,1]
+fnhc = a[2]
+cnhc = exp(a[1])
+lines(qmod, cnhc * qmod ^ fnhc)
+DQ[DQ$site == site, 2:3] <- c(cnhc, fnhc)
+
+# based on depth at unit discharge at NHC, 
+# we can calculate depth at unit discharge at the other sites
+# ll <- read_csv("rating_curves/all_sites_level_corrected.csv", 
+#                guess_max = 100000)
+qq <- read_csv("rating_curves/interpolatedQ_allsites_modified.csv",
+               guess_max = 10000)
+for(i in 2:7){
+  site = sites$sitecode[i]
+  qt <- paste0(site, ".Q")
+  a <- summary(lm(I(log(qq[,qt, drop = T])) ~ I(log(qq$NHC.Q))))$coefficients[,1]
+  # a2 <- summary(lm(ll[,site,drop = T] ~ ll$NHC))$coefficients[,1]
+  qnhc = exp(-a[1]/a[2])
+  dnhc <- cnhc*(qnhc ^ fnhc)
+  delta <- dnhc - specs$avg_depth[4]
+  DQ$c_m[DQ$site == site] <- specs$avg_depth[specs$site == site][1] + delta
+  tmp <- data.frame(discharge = 1,
+                    avg_depth = c)
+  dat <- specs %>% 
+    filter(site == !! site) %>%
+    bind_rows(tmp)
+  c = DQ$c_m[DQ$site == site]
+  f = DQ$f[DQ$site == site]
+  plot(dat$discharge, dat$avg_depth, pch = 19, main = site)
+  lines(qmod, c * qmod ^ f, lty = 2)
+  a <- summary(lm(log(avg_depth) ~ log(discharge), dat))$coefficients[,1]
+  f1 = a[2]
+  c1 = exp(a[1])
+  lines(qmod, c1 * qmod ^ f1)
+  DQ[DQ$site == site, 2:3] <- c(c1, f1)
+}
+
+#not great for  PWC, WB
+for(i in c(4,6)){
+  site = sites$sitecode[i]
+  dat <- specs %>% 
+    filter(site == !! site)
+  plot(dat$discharge, dat$avg_depth, pch = 19, main = site)
+  a <- summary(lm(log(avg_depth) ~ log(discharge), dat))$coefficients[,1]
+  f1 = a[2]
+  c1 = exp(a[1])
+  lines(qmod, c1 * qmod ^ f1)
+  DQ[DQ$site == site, 2:3] <- c(c1, f1)
+}
+
+write_csv(specs, "rating_curves/depth_discharge_points.csv")
+write_csv(DQ, "rating_curves/depth_discharge_relationship_LM1953.csv")

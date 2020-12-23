@@ -14,8 +14,14 @@ source("../src/helpers.R")
 
 # 1. load raw data files and metadata ####
 sites <- read_csv("siteData/NHCsite_metadata.csv")
-Qdat <- read_csv("rating_curves/interpolatedQ_allsites_modified.csv", guess_max = 10000)
-
+ll <- read_csv("rating_curves/all_sites_level_corrected.csv", 
+               guess_max = 100000)
+Qdat <- read_csv("rating_curves/interpolatedQ_allsites_modified.csv", 
+                 guess_max = 10000)
+nhcQ <- read_csv("rating_curves/NHC_UNHC_Q.csv", guess_max = 10000) %>%
+  select(DateTime_UTC, NHC.Q = NHC_Q, UNHC.Q = UNHC_Q) %>%
+  full_join(Qdat) %>% 
+  arrange(DateTime_UTC)
 filelist <- list.files("metabolism/raw")
 
 # get rid of MC751 and Mud for now
@@ -36,12 +42,14 @@ get_Q <- function(dat, Qdat){
 }
 
 # 3. Estimate depth based on Leopold and Maddock/Raymond.  ####
-#     12/18/2020 still need to calibrate site specific parameters
-DQ <- data.frame(sitename = c("NHC","PM","CBP","WB","WBP","PWC","UNHC"),
-                 c_m = rep(0.409, 7),   # depth at unit discharge
-                 f = rep(.294, 7))      # exponent in depth discharge relation
+# DQ <- data.frame(sitename = c("NHC","PM","CBP","WB","WBP","PWC","UNHC"),
+#                  c_m = rep(0.409, 7),   # depth at unit discharge
+#                  f = rep(.294, 7))      # exponent in depth discharge relation
 # coefficients are default values for Leopold and Maddock 1953 equation D=cQ^f
 # defined in Raymond 2012.
+# load dataframe with calibrated parameters for each site:
+
+DQ <- read_csv("rating_curves/depth_discharge_relationship_LM1953.csv")
 
 # 4. Calculate Level data from water pressure ####
 # Depth = pressure_Pa/density/acelleration due to gravity = 
@@ -58,10 +66,20 @@ calc_water_level<- function(dat, sites){
   return(level_m)
 }
 
+# if rerunning for a site already corrected level, use this function
+get_l <- function(dat, ll){
+  Qname <- dat$site[1]
+  L <- ll %>% select (DateTime_UTC, level_m = all_of(Qname)) %>%
+    right_join(dat, by="DateTime_UTC") %>%
+    arrange(DateTime_UTC)
+  
+  return(L)
+}
 
 # 5. Function to prepare datafile for drift correction ####
 
-prep_file <- function(filename, sites, Qdat, DQ){
+prep_file <- function(filename, sites, Qdat, 
+                      DQ, ll = NULL, corrected_level = F){
   dat <- read_csv(paste0("metabolism/raw/",filename), guess_max = 10000)
   lat <- sites$latitude[sites$sitecode == dat$site[1]]
   lon <- sites$longitude[sites$sitecode == dat$site[1]]
@@ -92,8 +110,11 @@ prep_file <- function(filename, sites, Qdat, DQ){
                           f = DQ$f[DQ$sitename == dat$site[1]])
   
   # Calculate Level data from water pressure
-  dat$level_m <- calc_water_level(dat, sites)
-  
+  if(corrected_level == T){
+    dat <- get_l(dat, ll)
+  } else {
+    dat$level_m <- calc_water_level(dat, sites)
+  }
   # rename variables needed for metabolism model
   dat <- dat %>% 
     select(-DateTime_EST, -AirPres_mbar, -AirPres_kPa, 
@@ -104,6 +125,7 @@ prep_file <- function(filename, sites, Qdat, DQ){
   return(dat)
 }
 
+# run without corrected level
 nhc_level <- read_csv("rating_curves/NHC_UNHC_Q.csv", guess_max = 10000)
 for(i in 1:length(filelist)){
   
@@ -126,6 +148,13 @@ for(i in 1:length(filelist)){
     arrange(DateTime_UTC)
   }  
   
+  write_csv(dat, paste0("metabolism/processed/", dat$site[1], ".csv"))
+}
+
+# run with corrected level
+for(i in 1:length(filelist)){
+  filename <- filelist[i]
+  dat <- prep_file(filename, sites, nhcQ, DQ, ll, TRUE)
   write_csv(dat, paste0("metabolism/processed/", dat$site[1], ".csv"))
 }
 

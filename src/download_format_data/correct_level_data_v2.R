@@ -320,3 +320,18 @@ plot(dat$level_m, dat$discharge, log = "y")
 
 write_csv(dat, "metabolism/processed/level_v2/CBP_lvl.csv")
 
+# compile all levels ####
+nhc <- read_csv("rating_curves/NHC_UNHC_Q.csv", guess_max = 10000) %>%
+  select(DateTime_UTC, NHC = NHC_level, UNHC = UNHC_level)
+for(site in c("PM","CBP","WB","WBP","PWC")){
+  dat <- read_csv(paste0("metabolism/processed/level_v2/", site, "_lvl.csv"), 
+                  guess_max = 10000) %>%
+    select(DateTime_UTC, 
+           !!site := level_m) 
+  nhc <- full_join(dat, nhc)
+}
+nhc <- arrange(nhc, DateTime_UTC)
+w <- range(which(!is.na(nhc$NHC)))
+nhc <- nhc[w[1]:w[2],]
+
+write_csv(nhc, "rating_curves/all_sites_level_corrected.csv")
