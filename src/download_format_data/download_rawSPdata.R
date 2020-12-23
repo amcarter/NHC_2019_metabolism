@@ -29,7 +29,7 @@ sites$enddate.EST <- as.POSIXct(sites$enddate.UTC,
                         with_tz(tzone="EST")
 
 # subset for the sites we actually want:
-nhc_sites <- sites[c(1:5,7),]
+nhc_sites <- sites[c(1:7),]
 mud_sites <- sites[8:9,]
 # nhc_sites <- sites[c(1,7),]
 # # find date range of available data for each site
@@ -54,8 +54,10 @@ for(i in 1:nrow(nhc_sites)){
   dd <- dat$data %>% 
     mutate(value = ifelse(flagtype %in% c("Bad Data", "Questionable"),
                           NA, value)) %>%
-    select(DateTime_UTC, site,value, variable) %>%
+    select(DateTime_UTC, site, value, variable) %>%
     pivot_wider(names_from = variable, values_from = value)
+  w <- range(which(!is.na(dd$DO_mgL)))
+  dd <- dd[w[1]:w[2],]
   write_csv(dd, paste0("metabolism/raw/", dd$site[1], "_", 
                    as.Date(dat$specs$enddate), ".csv"))  
   # write_rds(dat, path = paste0("metabolism/raw/",

@@ -19,10 +19,11 @@ rle_custom = function(x){
 # yd is a dataframe with a column of the data you want corrected and 
 # a column of the point measurements for correction.
 drift_correct <-  function(yd,  colname1, colname2){ 
-  gap <- rle_custom(is.na(yd[,colname1])) %>%
+  gap <- rle_custom(is.na(yd[,colname1, drop = T])) %>%
     filter(values == 0)
   ends <- data.frame(pt = c(gap$starts, gap$stops),
                      dat = FALSE) 
+  #zero <- rle_custom(yd[,colname1] <= 0)
   ysi_pts <- data.frame(pt = which(!is.na(yd[, colname2])),
                         dat = TRUE) %>%
     bind_rows(ends) %>%
@@ -66,7 +67,7 @@ drift_correct <-  function(yd,  colname1, colname2){
       } #don't need an else, if the 2nd point is also a sensor break, do nothing
     }
   }
-  return(yd[, colname1])
+  return(yd[, colname1, drop = T])
 }
 
 #################

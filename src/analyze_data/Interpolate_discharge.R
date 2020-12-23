@@ -1,4 +1,4 @@
-#####################################
+#
 # Interpolate discharge to NHC sites without rating curves
 
 # AMCarter
@@ -17,10 +17,7 @@ library(dygraphs)
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data")
 
 # load metadata ####
-# ZQdat_sp <- read_csv(file="siteData/NC_streampulseZQ_data.csv")
-ZQdat <- read_csv(file="rating_curves/modified_ZQ_curves.csv")
 wsAreas <- read_csv(file="siteData/NHCsite_watersheds.csv")
-sites <- read_csv(file="siteData/NHCsite_metadata.csv")
 source("../src/helpers.R")
 
 #Add WS area to sites list
@@ -29,7 +26,8 @@ source("../src/helpers.R")
 
 # find date range for which we need discharge for NHC sites
 
-sites <- sites[1:7,] # get rid of MC751 and mud, they are not along same continuum
+sites <- read_csv(file="siteData/NHCsite_metadata.csv")
+# sites <- sites[1:7,] # get rid of MC751 and mud, they are not along same continuum
 #dateRange <- c(min(sites$startdate.UTC), max(sites$enddate.UTC))
 #DateTime_UTC <- seq(dateRange[1], dateRange[2], by = 15*60)
 
@@ -47,14 +45,14 @@ NHC <- NHC_dat$data %>%
   select(DateTime_UTC, pressure_kPa=WaterPres_kPa, temp = WaterTemp_C, 
          AirTemp_C, AirPres_kPa)
 
-plot_pres <- function(NHC, waterpres = "pressure_kPa", airpres = "AirPres_kPa"){
+plot_pres <- function(NHC, waterpres = "level_m", airpres = "waterdepth_m"){
   NHC %>% select(all_of(waterpres), all_of(airpres)) %>%
-    xts(order.by = NHC$DateTime_EST) %>%
+    xts(order.by = NHC$DateTime_UTC) %>%
     dygraph() %>%
     dyRangeSelector()
 }
 
-plot_pres(NHC)
+plot_pres(NHC, "pressure_kPa", "AirPres_kPa")
 # remove NHC out of water pressure values (all below 103 from looking at graph)
 NHC$pressure_kPa[which(NHC$pressure_kPa<102.5)]<-NA
 
@@ -112,31 +110,23 @@ qq <- UNHC %>%
          unhc.temp = UNHC.temp, unhc.level_m,
          AirPres_kPa, AirTemp_C) %>%
   arrange(DateTime_UTC)
-
+# write_csv(qq, "rating_curves/NHC_UNHC_raw_level.csv")
 # join with field depth measurements to correct level ####
+qq <- read_csv("rating_curves/NHC_UNHC_raw_level.csv", guess_max = 10000)
+  # nhc ####
 ysi <- read_csv("water_chemistry/all_nhc_ysi_data.csv") %>%
-  mutate(DateTime_EST = with_tz(DateTime_EST, tz = "EST")) %>%
-  select(site, DateTime_EST, watertemp_C, waterdepth_cm) 
+  select(site, DateTime_UTC, watertemp_C, waterdepth_cm) 
 
 nhc <- qq %>%
-  mutate(DateTime_EST = with_tz(DateTime_UTC, tz = "EST")) %>%
-  select(DateTime_EST, temp = nhc.temp, level_m = nhc.level_m) %>%
+  select(DateTime_UTC, temp = nhc.temp, level_m = nhc.level_m) %>%
   left_join(ysi[ysi$site == "NHC",]) %>%
   mutate(waterdepth_m = waterdepth_cm / 100) %>%
   select(-site, -waterdepth_cm)
 
-plotdd <- function(nhc){
-  nhc %>%
-    select(waterdepth_m, level_m) %>%
-    xts(order.by = nhc$DateTime_EST) %>%
-    dygraph() %>%
-    dyRangeSelector()
-}
-
-plotdd(nhc)
+plot_pres(nhc, "level_m", "waterdepth_m")
 # Fill in missing dates
-nhc <- data.frame(DateTime_EST = seq(min(nhc$DateTime_EST), 
-                                     max(nhc$DateTime_EST),
+nhc <- data.frame(DateTime_UTC = seq(min(nhc$DateTime_UTC), 
+                                     max(nhc$DateTime_UTC),
                                      by = '15 min')) %>%
   left_join(nhc)
 
@@ -154,36 +144,59 @@ big_gaps <- rle_custom(is.na(nhc$level_m)) %>%
 # these gaps look like snapping them together would be incorrect
 gaps <- gaps %>% 
   slice(-c(11, 16, 21, 66, 82, 84, 94, 99:nrow(gaps))) %>%
+  bind_rows(big_gaps[-1,]) %>%
   mutate(lvl_start = nhc$level_m[starts],
          lvl_stop = nhc$level_m[stops],
          jump = lvl_stop - lvl_start) %>%
   filter(jump >= 0.01 | jump <= -.01) # only adjust for gaps larger than 1 cm
 
 n <- nrow(nhc)
-for(i in 2:nrow(gaps)){
-  end_chunk = min(big_gaps$starts[which(big_gaps$starts >= gaps$stops[i])])
-  nhc$level_m[gaps$stops[i]:end_chunk] <- 
-    nhc$level_m[gaps$stops[i]:end_chunk] - gaps$jump[i]
-}
+nhc$level_m1 <- nhc$level_m
 nhc$level_m <- na.approx(nhc$level_m, maxgap = 50, na.rm = F)
-nhc$level_d <- drift_correct(nhc, "level_m", "waterdepth_m")
-plot_pres(nhc, "level_m", "level_d")
+for(i in 1:nrow(gaps)){
+  end = gaps$starts[i]
+  if(i == 1){ start = 1 } else {start = gaps$stops[i-1] }
+  delta <- nhc$waterdepth_m[start:end] - nhc$level_m[start:end]
+  if(sum(!is.na(delta)) > 0){
+    nhc$level_m[start:n] <- nhc$level_m[start:n] + mean(delta, na.rm = T)
+  }
+}  
+# for(i in 2:nrow(gaps)){
+#   end_chunk = min(big_gaps$starts[which(big_gaps$starts >= gaps$stops[i])])
+#   nhc$level_m[gaps$stops[i]:end_chunk] <- 
+#     nhc$level_m[gaps$stops[i]:end_chunk] - gaps$jump[i]
+# }
+# nhc$level_m <- na.approx(nhc$level_m, maxgap = 50, na.rm = F)
+#nhc$level_d <- drift_correct(nhc, "level_m", "waterdepth_m")
+dd <- ymd_hms(c("2018-04-05 17:00:00", "2018-04-06 18:00:00"))
+w <- which(nhc$DateTime_UTC %in% dd)
+nhc$level_m[c((w[1]+1), (w[1]+2), (w[2]-1), (w[2]-2))] <- NA
+nhc$level_m[(w[1]+1):(w[2]-1)] <- nhc$level_m[(w[1]+1):(w[2]-1)] + 
+  mean(nhc$level_m[w]) - mean(nhc$level_m[c(w[1]+3, w[2]-3)])
+# nhc$level_d[nhc$DateTime_UTC < dd] <- nhc$level_m[nhc$DateTime_UTC < dd] + 
+#   mean(nhc$waterdepth_m[nhc$DateTime_UTC < dd] - 
+#          nhc$level_m[nhc$DateTime_UTC < dd], na.rm = T)
+# nhc$level_d[nhc$DateTime_UTC > dd] <- nhc$level_m[nhc$DateTime_UTC > dd] + 
+#   mean(nhc$waterdepth_m[nhc$DateTime_UTC > dd] - 
+#          nhc$level_m[nhc$DateTime_UTC > dd], na.rm = T)
+plot_pres(nhc, "level_m1", "level_m")
+plot_pres(nhc, "level_m", "waterdepth_m")
 
 nhc <- nhc %>%
-  select(-level_m) %>%
-  rename(level_m = level_d) #%>%
-  plotdd()
+  select(-level_m1) %>%
+  mutate(level_m = na.approx(level_m, maxgap = 96*3, na.rm = F)) %>%
+  filter(DateTime_UTC < ymd_hms("2020-04-01 00:00:00"))#%>%
 
 w <- range(which(!is.na(nhc$level_m)))
 nhc <- nhc[w[1]:w[2],]
-# uunhc####
-ysi <- read_csv("water_chemistry/all_nhc_ysi_data.csv") %>%
-  mutate(DateTime_EST = with_tz(DateTime_EST, tz = "EST")) %>%
-  select(site, DateTime_EST, watertemp_C, waterdepth_cm) 
+plot_pres(nhc)
+
+  # unhc ####
+# ysi <- read_csv("water_chemistry/all_nhc_ysi_data.csv") %>%
+#   select(site, DateTime_UTC, watertemp_C, waterdepth_cm) 
 
 unhc <- qq %>%
-  mutate(DateTime_EST = with_tz(DateTime_UTC, tz = "EST")) %>%
-  select(DateTime_EST, temp = unhc.temp, level_m = unhc.level_m) %>%
+  select(DateTime_UTC, temp = unhc.temp, level_m = unhc.level_m) %>%
   left_join(ysi[ysi$site == "UNHC",]) %>%
   mutate(waterdepth_m = waterdepth_cm / 100) %>%
   select(-site, -waterdepth_cm)
@@ -191,8 +204,8 @@ unhc <- qq %>%
 #plotdd(unhc)
 
 # Fill in missing dates
-unhc <- data.frame(DateTime_EST = seq(min(unhc$DateTime_EST), 
-                                     max(unhc$DateTime_EST),
+unhc <- data.frame(DateTime_UTC = seq(min(unhc$DateTime_UTC), 
+                                     max(unhc$DateTime_UTC),
                                      by = '15 min')) %>%
   left_join(unhc)
 
@@ -200,15 +213,25 @@ unhc <- data.frame(DateTime_EST = seq(min(unhc$DateTime_EST),
 # these jumps occur at: (dttm is last pt of data before jump)
 gaps <- rle_custom(is.na(unhc$level_m)) %>%
   filter(values == 1, lengths < 50) %>%
-  mutate(datetime = unhc$DateTime_EST[starts],
+  mutate(datetime = unhc$DateTime_UTC[starts],
          starts = starts - 1,
          stops = stops + 1)
-tmp <- data.frame(starts = c(which(unhc$DateTime_EST ==
-                                     ymd_hms("2017-05-12 12:30:00", 
-                                             tz = "EST")),
-                             which(unhc$DateTime_EST == 
-                                     ymd_hms("2017-07-12 10:15:00"))))
-tmp$stops <- tmp$starts - 1
+tmp <- data.frame(starts = c(which(unhc$DateTime_UTC ==
+                                     ymd_hms("2017-05-01 17:30:00")),
+                             which(unhc$DateTime_UTC == 
+                                     ymd_hms("2017-04-11 14:30:00")),
+                             which(unhc$DateTime_UTC == 
+                                     ymd_hms("2017-05-16 13:45:00")),
+                             which(unhc$DateTime_UTC == 
+                                     ymd_hms("2017-07-12 15:15:00")),
+                             which(unhc$DateTime_UTC == 
+                                     ymd_hms("2017-08-09 16:15:00")),
+                             which(unhc$DateTime_UTC == 
+                                     ymd_hms("2017-08-30 15:15:00")),
+                             which(unhc$DateTime_UTC == 
+                                     ymd_hms("2018-06-19 15:15:00"))
+                             ))
+tmp$stops <- tmp$starts + 1
 big_gaps <- rle_custom(is.na(unhc$level_m)) %>%
   filter(values == 1, lengths > 96*3) %>%
   mutate(starts = starts - 1)
@@ -217,231 +240,259 @@ big_gaps <- rle_custom(is.na(unhc$level_m)) %>%
 gaps <- gaps %>% 
   slice(-c(34,52)) %>%
   bind_rows(tmp) %>%
+  bind_rows(big_gaps[-1,]) %>%
   mutate(lvl_start = unhc$level_m[starts],
          lvl_stop = unhc$level_m[stops],
          jump = lvl_stop - lvl_start) %>%
-  filter(jump >= 0.01 | jump <= -.01) # only adjust for gaps larger than 1 cm
+  filter(jump >= 0.01 | jump <= -.01) %>% # only adjust for gaps larger than 1 cm
+  arrange(starts)
 
 n <- nrow(unhc)
-for(i in 2:nrow(gaps)){
-  end_chunk = min(big_gaps$starts[which(big_gaps$starts >= gaps$stops[i])])
-  unhc$level_m[gaps$stops[i]:end_chunk] <- 
-    unhc$level_m[gaps$stops[i]:end_chunk] - gaps$jump[i]
-}
+unhc$level_m1 <- unhc$level_m
 unhc$level_m <- na.approx(unhc$level_m, maxgap = 50, na.rm = F)
-unhc$level_d <- drift_correct(unhc, "level_m", "waterdepth_m")
-plot_pres(unhc, "level_m", "level_d")
+for(i in 1:nrow(gaps)){
+  end = gaps$starts[i]
+  if(i == 1){ start = 1 } else {start = gaps$stops[i-1] }
+  delta <- unhc$waterdepth_m[start:end] - unhc$level_m[start:end]
+  if(sum(!is.na(delta)) > 0){
+    unhc$level_m[start:n] <- unhc$level_m[start:n] + mean(delta, na.rm = T)
+  }
+}  
+dd <- ymd_hms("2019-12-04 18:15:00")
+w <- which(unhc$DateTime_UTC == dd)
+unhc$level_m[(w+1):n] <- unhc$level_m[(w+1):n] + unhc$level_m[w]- unhc$level_m[w+3] 
+dd <- ymd_hms("2019-10-02 16:15:00")
+w <- which(unhc$DateTime_UTC == dd)
+unhc$level_m[(w+1):n] <- unhc$level_m[(w+1):n] + unhc$level_m[w]- unhc$level_m[w+1] 
+# for(i in 2:nrow(gaps)){
+#   end_chunk = min(big_gaps$starts[which(big_gaps$starts >= gaps$stops[i])])
+#   unhc$level_m[gaps$stops[i]:end_chunk] <- 
+#     unhc$level_m[gaps$stops[i]:end_chunk] - gaps$jump[i]
+# }
+# unhc$level_m <- na.approx(unhc$level_m, maxgap = 50, na.rm = F)
+# unhc$level_d <- drift_correct(unhc, "level_m", "waterdepth_m")
+
+plot_pres(unhc, "level_m", "waterdepth_m")
 
 unhc <- unhc %>%
-  select(-level_m) %>%
-  rename(level_m = level_d) #%>%
-  plotdd()
+  select(-level_m1) %>%
+  mutate(level_m = na.approx(level_m, maxgap = 96*3, na.rm = F))
+#         rename(level_m = level_d) #%>%
+  plot_pres(unhc)
 
 w <- range(which(!is.na(unhc$level_m)))
 unhc <- unhc[w[1]:w[2],]
 
 qq <- unhc %>%
   rename(temp_unhc = temp, level_unhc = level_m) %>%
-  select(DateTime_EST, temp_unhc, level_unhc) %>%
-  full_join(nhc, by = "DateTime_EST") %>%
-  arrange(DateTime_EST) %>%
-  select(DateTime_EST, temp_unhc, temp_nhc = temp,
+  select(DateTime_UTC, temp_unhc, level_unhc) %>%
+  full_join(nhc, by = "DateTime_UTC") %>%
+  arrange(DateTime_UTC) %>%
+  select(DateTime_UTC, temp_unhc, temp_nhc = temp,
          level_unhc, level_nhc = level_m) 
 
+plot_pres(qq, "level_nhc", "level_unhc")
 plot(qq$level_unhc, qq$level_nhc)
 
+ # write_csv(qq, "rating_curves/NHC_UNHC_corrected_level.csv")
 # Calculate discharge from rating curves ####
 # Q = a * level ^ b
-# figure out where this ZQdat_sp is coming from
+# ZQdat_sp <- read_csv(file="siteData/NC_streampulseZQ_data.csv")
+ZQdat <- read_csv(file="rating_curves/modified_ZQ_curves.csv")
+qq <- read_csv("rating_curves/NHC_UNHC_corrected_level.csv", guess_max = 10000)
+# qq <- read_csv("rating_curves/NHC_UNHC_raw_level.csv", guess_max = 10000) %>%
+#   rename(level_nhc = nhc.level_m, level_unhc = unhc.level_m)
 
-m <- lm(log(discharge_cms) ~ log(level_m),
-      data = ZQdat_sp[ZQdat_sp$site == "NHC",])
-ab.nhc_sp <- summary(m)$coefficients[,1]
-ab.nhc <- as.data.frame(ZQdat[1,2:3])
-plot(ZQdat_sp$level_m[ZQdat_sp$site == "NHC"],
-     ZQdat_sp$discharge_cms[ZQdat_sp$site == "NHC"],
-     xlim = c(.2,2), ylim = c(0,20), main = "NHC")
-lines(seq(.5, 10, by = .01), 
-      exp(ab.nhc_sp[1] + log(seq(.5, 10, by = .01)) * ab.nhc_sp[2]),
-      lty = 2)
-lines(seq(.5, 10, by = .01),
-      exp(as.numeric(ab.nhc[1]) + 
-            as.numeric(ab.nhc[2]) * log(seq(.5, 10, by = .01))))
+qq <- qq %>%
+  mutate(discharge_nhc = exp(ZQdat$a[1] + ZQdat$b[1] * log(level_nhc)),
+         discharge_unhc = exp(ZQdat$a[2] + ZQdat$b[2] * log(level_unhc)))
+         # discharge_unhc3 = exp(ZQdat$a[4] + ZQdat$b[4] * log(level_unhc)),
+         # discharge_nhc2 = exp(ZQdat$a[3] + ZQdat$b[3] * log(level_nhc)))
+par(mfrow = c(2,1), mar = c(2,5,1,2))
+plot(qq$DateTime_UTC, qq$discharge_nhc,
+     type = 'l', log = "y", ylab = "nhc Q")
+# plot(qq$DateTime_UTC, qq$discharge_nhc, 
+#      type = 'l', ylim = c(0,2), ylab = "nhc Q")
+abline(h = c(ZQdat$max_Q[1], ZQdat$min_Q[1]), col = "brown3")#, lty = 2)
+# lines(qq$DateTime_UTC, qq$discharge_unhc, col = 3)
+plot(qq$DateTime_UTC, qq$discharge_unhc,
+     type = 'l', log = "y", ylab = "unhc Q")
+abline(h = c(ZQdat$max_Q[2], ZQdat$min_Q[2]), col = "brown3", lty = 2)
+#lines(qq$DateTime_UTC, qq$discharge_unhc2, col = 5)
+par(mfrow = c(1,1))
+plot(qq$DateTime_UTC, qq$discharge_nhc, log = "y", type = "l")
+lines(qq$DateTime_UTC, qq$discharge_unhc, col = 5)
+# lines(qq$DateTime_UTC, qq$discharge_nhc2, col = 2)
+# lines(qq$DateTime_UTC, qq$discharge_unhc3, col = 3)
 
-m <- lm(log(discharge_cms) ~ log(level_m),
-        data = ZQdat_sp[ZQdat_sp$site == "UNHC",])
-ab.unhc_sp <- summary(m)$coefficients[,1]
-ab.unhc <- as.data.frame(ZQdat[2,2:3])
-plot(ZQdat_sp$level_m[ZQdat_sp$site =="UNHC"],
-     ZQdat_sp$discharge_cms[ZQdat_sp$site == "UNHC"],
-     xlim = c(.2, 2), ylim = c(0,20), main = "UNHC")
-lines(seq(.1, 2, by = .01),
-      exp(ab.unhc_sp[1] + log(seq(.1, 2, by = .01)) * ab.unhc_sp[2]),
-          lty = 2)
-lines(seq(.1, 2, by = .01),
-      exp(as.numeric(ab.unhc[1]) + 
-            as.numeric(ab.unhc[2]) * log(seq(.1, 2, by = .01))))
-par(mfrow = c(1,2))
-et_cm/100) %>%
-         unhc.temp = UNHC.temp, unhc.level_m,
-         AirPres_kPa)
+qq %>%
+  select(discharge_nhc,  discharge_unhc) %>%
+  xts(order.by = qq$DateTime_UTC) %>%
+  dygraph() %>% dyRangeSelector()
+nnhc <- sum(!is.na(qq$discharge_nhc))
+nunhc <- sum(!is.na(qq$discharge_unhc))
 
-sets$site == "NHC",]$offset_cm/100,
+ZQdat <- data.frame(site = c("NHC","UNHC"),
+           above_rc = 
+             c(sum(qq$discharge_nhc > ZQdat$max_Q[1], na.rm = T)/nnhc,
+               sum(qq$discharge_unhc > ZQdat$max_Q[2], na.rm = T)/nunhc),
+           below_rc = 
+             c(sum(qq$discharge_nhc < ZQdat$min_Q[1], na.rm = T)/nnhc,
+               sum(qq$discharge_unhc < ZQdat$min_Q[2], na.rm = T)/nunhc)) %>% 
+  left_join(ZQdat)
 
-qq <- left_join(NHC, UNHC, by="DateTime_UTC")
-
-Qdat <- qq %>%
-  mutate(nhc.discharge = exp(as.numeric(ab.nhc[1])
-                             + as.numeric(ab.nhc[2]) * log(nhc.level_m)),
-         nhc.discharge = ifelse(nhc.discharge > 500 | nhc.discharge < .002, 
-                                NA, nhc.discharge),
-         unhc.discharge = exp(as.numeric(ab.unhc[1]) + 
-                                as.numeric(ab.unhc[2]) * log(unhc.level_m)),
-         unhc.discharge = ifelse(unhc.discharge >= 120, NA, unhc.discharge),
-         nhc.discharge = na.approx(nhc.discharge, na.rm = F, maxgap = 12),
-         unhc.discharge = na.approx(unhc.discharge, na.rm = F, maxgap = 12))
+write_csv(ZQdat, "rating_curves/modified_ZQ_curves.csv")
 
 par(mfrow = c(1,1))
-plot(Qdat$unhc.discharge, (Qdat$nhc.discharge),log = "xy",
-     xlab = "unhc Q", ylab = "nhc Q")
-#     col = alpha(1,.01), pch = 20)#, xlim = c(0,5), ylim = c(0,1.2))
-m <- lm(unhc.discharge ~ nhc.discharge,
-        Qdat)
-mm <- summary(m)$coefficients[,1]
-abline(mm, col = 3)
+plot(qq$discharge_unhc, qq$discharge_nhc,log = "xy",
+     xlab = "unhc Q", ylab = "nhc Q", pch = 20)
+# ggplot(qq, aes(log(level_unhc), log(level_nhc), col = DateTime_UTC)) +
+#   geom_point() 
+# the relationship looks like it changes from year to year, so I will use the 
+# fit from one year at a time.
+# fill missing NHC level based on UNHC #### 
+qm <- qq %>%
+  mutate(level_nhc_mod = NA, 
+         level_unhc_mod = NA, 
+         year = year(DateTime_UTC))
+cordat <- data.frame()
+for(i in 2017:2019){
+  if(i == 2017) {
+    years = c(2016, 2017)}
+  if(i == 2018){
+    years = 2018 }
+  if(i == 2019){
+    years = c(2019, 2020) }
+  
+  dat <- qm %>%
+    filter(year %in% years)
+  
+  m = lm(log(level_nhc) ~ log(level_unhc), dat)$coefficients
+  m2 = lm(log(level_unhc) ~ log(level_nhc), dat)$coefficients
+  qm <- qm %>%
+    mutate(level_nhc_mod = ifelse(year %in% years, 
+                                  exp(m[1] + m[2] * log(level_unhc)),
+                                  level_nhc_mod),
+           level_unhc_mod = ifelse(year %in% years, 
+                                   exp(m2[1] + m2[2] * log(level_nhc)),
+                                   level_unhc_mod))
+}
+  
+par(mfrow = c(1,2))
+plot(qm$level_nhc, qm$level_nhc_mod, pch = 20, 
+     xlab = "measured", ylab = "modeled", main = "NHC")
+abline(0, 1, col = 2)
+plot(qm$level_unhc, qm$level_unhc_mod, pch = 20, 
+     xlab = "measured", ylab = "modeled", main = "UNHC")
+abline(0, 1, col = 2)
 
-m <- lm(log(nhc.discharge) ~ log(unhc.discharge),
-        Qdat)
-mm <- summary(m)$coefficients[,1]
+qm <- qm %>% 
+  mutate(level_nhc_mod = ifelse(is.na(level_nhc), level_nhc_mod, level_nhc),
+         level_unhc_mod = ifelse(is.na(level_unhc), level_unhc_mod, level_unhc),
+         notes = case_when(is.na(level_nhc) ~ "nhc modeled",
+                           is.na(level_unhc) ~ "unhc modeled"))
 
-lines(seq(.01, 50.01, by = .1), 
-      exp(mm[1] + mm[2] * log(seq(.01,50.01, by = .1))), col = 2)
-abline(mm, col = 2)
+# snap interpolated levels  to their neighbors ####
 
-write_csv(Qdat, "rating_curves/NHC_UNHC_Q.csv")
-
-######################################################
-# fill missing NHC Q based on UNHC. 
-# This should be revisited, there is clear historesis in the Q-Q relationship
-Qdat <- read_csv("rating_curves/NHC_UNHC_Q.csv")
-Qdat <- 
-  Qdat %>%
-  mutate(predNHC_Q = exp(mm[1] + mm[2] * log(unhc.discharge)),
-         predUNHC_Q = exp((log(nhc.discharge) - mm[1])/mm[2]),
-         notes = case_when(is.na(nhc.discharge) & !is.na(predNHC_Q) ~ "modeled NHC Q",
-                           is.na(unhc.discharge) & !is.na(predUNHC_Q) ~ "modeled UNHC Q"),
-         modNHC_Q = ifelse(is.na(nhc.discharge), predNHC_Q, nhc.discharge),
-         modUNHC_Q = ifelse(is.na(unhc.discharge), predUNHC_Q, unhc.discharge))
-         
-
-# snap NHC interpolated points to their neighbors
-
-NHC_gaps <- rle_custom(is.na(Qdat$nhc.discharge))
-UNHC_gaps <- rle_custom(is.na(Qdat$unhc.discharge))
+nhc_gaps <- rle_custom(is.na(qm$level_nhc))
+unhc_gaps <- rle_custom(is.na(qm$level_unhc))
 
 
 # fill in and plot modeled data
-
-plot(Qdat$DateTime_UTC, Qdat$modNHC_Q, log="y", main = "NHC")
-points(Qdat$DateTime_UTC[Qdat$notes=="modeled NHC Q"], 
-       Qdat$modNHC_Q[Qdat$notes=="modeled NHC Q"], col = "red")
-
-plot(Qdat$DateTime_UTC, Qdat$modUNHC_Q, log="y", main = "UNHC")
-points(Qdat$DateTime_UTC[Qdat$notes=="modeled UNHC Q"], 
-       Qdat$modUNHC_Q[Qdat$notes=="modeled UNHC Q"], col = "red")
+par(mfrow = c(1,1))
+plot(qm$DateTime_UTC, qm$level_nhc_mod, log="y", main = "NHC", pch = 20)
+points(qm$DateTime_UTC[qm$notes == "nhc modeled"], 
+       qm$level_nhc_mod[qm$notes=="nhc modeled"], pch = 20, col = "red")
+plot(qm$DateTime_UTC, qm$level_unhc_mod, log="y", main = "UNHC", pch = 20)
+points(qm$DateTime_UTC[qm$notes == "unhc modeled"], 
+       qm$level_unhc_mod[qm$notes=="unhc modeled"], pch = 20, col = "red")
 
 # find endpoints of measured and modeled data in the gaps
-NHC_gaps <- NHC_gaps[NHC_gaps$values==1,]
-UNHC_gaps <- UNHC_gaps[UNHC_gaps$values==1,]
+nhc_gaps <- nhc_gaps[nhc_gaps$values==1,]
+unhc_gaps <- unhc_gaps[unhc_gaps$values==1,]
 
 # Don't allow interpolated discharge to be lower than NHC min flow
-NHCmin <- min(Qdat$nhc.discharge, na.rm=T)
-m<- min(Qdat$predNHC_Q, na.rm=T)
-t <- which(Qdat$predNHC_Q==m)
+NHCmin <- min(qm$level_nhc, na.rm=T)
+m <- min(qm$level_nhc_mod, na.rm=T)
+ # it isnt.
 
-for(i in 1:nrow(NHC_gaps)){
-  a<- NHC_gaps[i,]$starts
-  b <- NHC_gaps[i,]$stops
+for(i in 1:nrow(nhc_gaps)){
+  a <- nhc_gaps[i,]$starts
+  b <- nhc_gaps[i,]$stops
   
   if(a==1) next
-  startdiff <- Qdat$nhc.discharge[a-1] - Qdat$predNHC_Q[a]
-  if(b==nrow(Qdat)){
+  startdiff <- qm$level_nhc[a-1] - qm$level_nhc_mod[a]
+  if(b==nrow(qm)){
     enddiff <- startdiff
   } else{
-      enddiff <- Qdat$nhc.discharge[b+1] - Qdat$predNHC_Q[b]
+      enddiff <- qm$level_nhc[b+1] - qm$level_nhc_mod[b]
   }
   if(is.na(startdiff)||is.na(enddiff)) next
-   diffQ <- seq(startdiff, enddiff, length.out=NHC_gaps[i,]$lengths)
-  if(t %in% seq(a, b)){
-   tmp1 <- seq(startdiff,(NHCmin-Qdat$predNHC_Q[t]), length.out=(t-a))
-   tmp2 <- seq((NHCmin-Qdat$predNHC_Q[t]), enddiff, length.out=(b-t+1))
-   diffQ <- c(tmp1,tmp2)
-  }
-  Qdat$modNHC_Q[a:b]<- Qdat$predNHC_Q[a:b]+diffQ
   
+  diffQ <- seq(startdiff, enddiff, length.out=nhc_gaps[i,]$lengths)
+  
+  qm$level_nhc_mod[a:b]<- qm$level_nhc_mod[a:b] + diffQ
 }
 
 # snap UNHC gaps
 # Don't allow interpolated discharge to be lower than NHC min flow
-UNHCmin <- min(Qdat$unhc.discharge, na.rm=T)
-m<- min(Qdat$predNHC_Q, na.rm=T)
-t <- which(Qdat$predNHC_Q==m)
+UNHCmin <- min(qm$level_unhc, na.rm=T)
+m <- min(qm$level_unhc_mod, na.rm=T)
+# it isnt
 
-for(i in 1:nrow(UNHC_gaps)){
-  a<- UNHC_gaps[i,]$starts
-  b <- UNHC_gaps[i,]$stops
-  startdiff <- Qdat$unhc.discharge[a-1] - Qdat$predUNHC_Q[a]
-  if(b==nrow(Qdat)){
+for(i in 1:nrow(unhc_gaps)){
+  a <- unhc_gaps[i,]$starts
+  b <- unhc_gaps[i,]$stops
+  
+  if(a==1) next
+  startdiff <- qm$level_unhc[a-1] - qm$level_unhc_mod[a]
+  if(b==nrow(qm)){
     enddiff <- startdiff
   } else{
-    enddiff <- Qdat$unhc.discharge[b+1] - Qdat$predUNHC_Q[b]
+      enddiff <- qm$level_unhc[b+1] - qm$level_unhc_mod[b]
   }
   if(is.na(startdiff)||is.na(enddiff)) next
-  diffQ <- seq(startdiff, enddiff, length.out=NHC_gaps[i,]$lengths)
   
-  Qdat$modUNHC_Q[a:b]<- Qdat$predUNHC_Q[a:b]+diffQ
+  diffQ <- seq(startdiff, enddiff, length.out=unhc_gaps[i,]$lengths)
   
+  qm$level_unhc_mod[a:b]<- qm$level_unhc_mod[a:b] + diffQ
 }
 
 # double check that everything looks okay
-plot(Qdat$DateTime_UTC, Qdat$modNHC_Q, log="y", main = "NHC")
-points(Qdat$DateTime_UTC[Qdat$notes=="modeled NHC Q"], 
-       Qdat$modNHC_Q[Qdat$notes=="modeled NHC Q"], col = "red")
+par(mfrow = c(1,1))
+plot(qm$DateTime_UTC, qm$level_nhc_mod, log="y", main = "NHC", pch = 20)
+points(qm$DateTime_UTC[qm$notes == "nhc modeled"], 
+       qm$level_nhc_mod[qm$notes=="nhc modeled"], pch = 20, col = "red")
+plot(qm$DateTime_UTC, qm$level_unhc_mod, log="y", main = "UNHC", pch = 20)
+points(qm$DateTime_UTC[qm$notes == "unhc modeled"], 
+       qm$level_unhc_mod[qm$notes=="unhc modeled"], pch = 20, col = "red")
 
-Qdat$modNHC_Q[Qdat$modNHC_Q<.01] <- NA
+qmm <- qm %>%
+  mutate(discharge_nhc_mod = exp(ZQdat$a[1] + ZQdat$b[1] * log(level_nhc_mod)),
+         discharge_unhc_mod = exp(ZQdat$a[2] + ZQdat$b[2] * log(level_unhc_mod)))
 
-plot(Qdat$DateTime_UTC, Qdat$modUNHC_Q, log="y", main = "UNHC")
-points(Qdat$DateTime_UTC[Qdat$notes=="modeled UNHC Q"], 
-       Qdat$modUNHC_Q[Qdat$notes=="modeled UNHC Q"], col = "red")
-diff <- Qdat$modUNHC_Q[Qdat$DateTime_UTC == ymd_hms("2020-03-18 19:15:00")]-
-  Qdat$modUNHC_Q[Qdat$DateTime_UTC == ymd_hms("2020-03-18 17:30:00")]
+tmp <- read_csv("rating_curves/NHC_UNHC_raw_level.csv", guess_max = 10000) %>%
+  select(DateTime_UTC, AirPres_kPa)
 
-Qdat$modUNHC_Q[Qdat$DateTime_UTC > ymd_hms("2020-03-18 17:30:00") &
-                 Qdat$DateTime_UTC < ymd_hms("2020-07-15 21:00:00")] <-
-  Qdat$modUNHC_Q[Qdat$DateTime_UTC > ymd_hms("2020-03-18 17:30:00") &
-                   Qdat$DateTime_UTC < ymd_hms("2020-07-15 21:00:00")] - diff/2
-Qdat$modUNHC_Q[Qdat$DateTime_UTC > ymd_hms("2020-03-18 17:30:00") &
-                 Qdat$DateTime_UTC < ymd_hms("2020-06-15 21:00:00")] <-
-  Qdat$modUNHC_Q[Qdat$DateTime_UTC > ymd_hms("2020-03-18 17:30:00") &
-                   Qdat$DateTime_UTC < ymd_hms("2020-06-15 21:00:00")] - diff/4
-
-
-Qdat$modUNHC_Q[Qdat$modUNHC_Q<.02] <- NA
-
-NHC_UNHC_Q_interp <- select(Qdat, DateTime_UTC, AirPres_kPa,
-                            NHC_Q = modNHC_Q,
-                            UNHC_Q = modUNHC_Q, notes)
+NHC_UNHC_Q_interp <- select(qmm, DateTime_UTC,
+                            NHC_level = level_nhc_mod,
+                            NHC_Q = discharge_nhc_mod,
+                            UNHC_level = level_unhc_mod,
+                            UNHC_Q = discharge_unhc_mod,
+                            notes) %>%
+  left_join(tmp)
 
 write_csv(NHC_UNHC_Q_interp, "rating_curves/NHC_UNHC_Q.csv")
 
-#########################################################
-# Add modeled Q for NHC sites to a dataframe with columns for each site to interpolate
-newQdat <- data.frame(matrix(NA, nrow=nrow(Qdat), ncol = (1+nrow(sites))))
+# Interpolate discharge ####
+sites <- read_csv("siteData/NHCsite_metadata.csv") %>%
+  slice(1:7)
+newQdat <- data.frame(matrix(NA, nrow=nrow(qmm), ncol = (1+nrow(sites))))
 colnames(newQdat)<- c("DateTime_UTC",paste(sites$sitecode, "Q", sep="."))
 
-newQdat$DateTime_UTC <- Qdat$DateTime_UTC
-newQdat$NHC.Q <- Qdat$modNHC_Q
-newQdat$UNHC.Q <- Qdat$modUNHC_Q
+newQdat$DateTime_UTC <- qmm$DateTime_UTC
+newQdat$NHC.Q <- qmm$discharge_nhc_mod
+newQdat$UNHC.Q <- qmm$discharge_unhc_mod
 
 for(i in which(!is.na(newQdat$NHC.Q))){
   df <- data.frame(Q = c(newQdat$NHC.Q[i], newQdat$UNHC.Q[i]), 
@@ -454,8 +505,10 @@ for(i in which(!is.na(newQdat$NHC.Q))){
   if(i %% 5000 == 0){print(newQdat$DateTime_UTC[i])}
 }
 
-newQdat <- full_join(newQdat, Qdat[,c(1,6,11)], by="DateTime_UTC")
-newQdat <- read_csv("siteData/interpolatedQ_allsites.csv")
+newQdat <-  NHC_UNHC_Q_interp %>%
+  select(DateTime_UTC, AirPres_kPa, notes) %>%
+  full_join(newQdat, by="DateTime_UTC")
+write_csv(newQdat, path = "rating_curves/interpolatedQ_allsites_modified.csv")
 plot(newQdat$DateTime_UTC, newQdat$NHC.Q, col = "grey80", type = "l", log = "y")
 lines(newQdat$DateTime_UTC, newQdat$PM.Q, col = "grey60")
 lines(newQdat$DateTime_UTC, newQdat$CBP.Q, col = "grey50")
@@ -463,4 +516,3 @@ lines(newQdat$DateTime_UTC, newQdat$WB.Q, col = "grey40")
 lines(newQdat$DateTime_UTC, newQdat$WBP.Q, col = "grey35")
 lines(newQdat$DateTime_UTC, newQdat$UNHC.Q, col = "grey20")
 
-write_csv(newQdat, path = "rating_curves/interpolatedQ_allsites_modified.csv")

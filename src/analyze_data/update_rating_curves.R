@@ -66,7 +66,8 @@ write_csv(qq, "data/rating_curves/calculated_discharge.csv")
 # 3. Add a new point to the Q file ####
 # this step is likely to be custom for each site/date, so we'll do one at a time
 
-qq <- read_csv("data/rating_curves/calculated_discharge.csv") %>%
+qq <- read_csv("data/rating_curves/calculated_discharge.csv") 
+qq <- qq%>%
   mutate(DateTime_EST = round_date(ymd_hms(paste(date, time), tz = "EST"),
                                    unit = "15 minutes"))
 
@@ -100,7 +101,7 @@ levels <- read_csv("data/metabolism/processed/PWC.csv") %>%
   full_join(levels) %>%
   arrange(DateTime_EST)
 par(mfrow = c(2,3))
-plot(log(levels$level_nhc), log(levels$level_unhc), pch = 20)
+plot((levels$level_nhc), (levels$level_unhc), pch = 20, xlim = c(.5, .7), ylim = c(0.4, 0.6))
 unhcab <- lm(log(level_unhc) ~ log(level_nhc), levels)$coefficients
 abline(unhcab)
 plot(log(levels$level_nhc), log(levels$level_pm), pch = 20, col = 2) 
@@ -142,6 +143,10 @@ qql <- qq %>%
   select(-level_pm, -level_cbp, -level_wb,
          -level_wbp, -level_pwc, -notes)
 
+write_csv(qql, "data/rating_curves/calculated_discharge_with_levels.csv")
+qql <- read_csv("data/rating_curves/calculated_discharge_with_levels.csv")
+
+par(mfrow = c(1,1))
 plot(qql$stage_m, qql$level)
 abline(0,1)
 
@@ -155,12 +160,12 @@ ggplot(qql, aes(stage_m, level, color = site)) +
 
 qq_l <- qql %>%
   mutate(level = case_when(is.na(level) ~  stage_m,
-                           level > 1.6 ~ stage_m,
+           #                level > 1.6 ~ stage_m,
                            !is.na(level) ~ level))
 
 # inspect data ####
 qq_l %>%
-  filter(site == "NHC") %>%
+  filter(site == "UNHC") %>%
   ggplot(aes(level, discharge)) +
   geom_point(aes(color = date), size = 2)
 
@@ -191,26 +196,33 @@ qq_l$discharge[w[1]] <- qq_l$discharge[w[2]]
 qq_l$velocity_avg <- qq_l$discharge/qq_l$xc_area
 qq_l <- qq_l %>%
   filter(!grepl("riffle", site))
-qq_l %>%
-  rename(DateTime_UTC = DateTime_EST) %>%
-write_csv("data/rating_curves/calculated_discharge_modified.csv")
-
+# qq_l %>%
+#   rename(DateTime_UTC = DateTime_EST) %>%
+# write_csv(qq_l, "data/rating_curves/calculated_discharge_modified.csv")
 # Build Rating Curves ####
+qq_l <- read_csv("data/rating_curves/calculated_discharge_modified.csv")
 nhc <- qq_l %>%
   filter(site =="NHC")
+nhc <- bind_rows(nhc, data.frame(level = .53, discharge = .05)) # this is the min stage and the min flow
 unhc <- qq_l %>%
-  filter(site =="UNHC") %>%
-  slice(-1)
+  filter(site =="UNHC")%>%
+  slice(c(-2,-3))
+  unhc$level[1]<- c(.38)
 m <- lm(log(discharge)~log(level), data = nhc)
 m_coef <- summary(m)$coefficients[,1]
 plot(nhc$level, nhc$discharge)
 lines(seq(0,2, by = .01), exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2])
-points(nhc$stage_m, nhc$discharge,pch = 20, col = 3)
+m <- lm(log(discharge)~log(stage_m), data = nhc)
+m_coef <- summary(m)$coefficients[,1]
+points(nhc$level, nhc$discharge,pch = 20, col = 5)
+lines(seq(0,2, by = .01), exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2], col = 5)
+
 m <- lm(log(discharge)~log(level), data = unhc)
 m_coef <- summary(m)$coefficients[,1]
 plot(unhc$level, unhc$discharge)
 lines(seq(0,2, by = .01), exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2])
-points(unhc$stage_m, unhc$discharge,pch = 20, col = 3)
+lines(seq(0,2, by = .01), exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2], col = 2)
+points(unhc$level, unhc$discharge,pch = 20, col = 2)
 
 build_powerlaw_rc <- function(l, q, site){
   m <- lm(log(q)~log(l))
@@ -221,6 +233,8 @@ build_powerlaw_rc <- function(l, q, site){
                    formula = "log(q) = a + b * log(level)",
                    min_Q = min(q, na.rm = T),
                    max_Q = max(q, na.rm = T),
+                   min_l = min(l, na.rm = T),
+                   max_l = max(l, na.rm = T),
                    n = length(!is.na(q)),
                    row.names = NULL)
   return(out)
@@ -228,7 +242,12 @@ build_powerlaw_rc <- function(l, q, site){
 
 rc <- data.frame()
 rc <- bind_rows(rc, build_powerlaw_rc(nhc$level, nhc$discharge, "NHC"))
-rc <- bind_rows(rc, build_powerlaw_rc(unhc$stage_m, unhc$discharge, "UNHC"))
+#rc <- bind_rows(rc, build_powerlaw_rc(nhc$stage_m, nhc$discharge, "NHC"))
+rc <- bind_rows(rc, build_powerlaw_rc(unhc$level, unhc$discharge, "UNHC"))
+
+rc$notes <- c("with low flow min stage point included (based on UNHC)",
+              "with two high flow low level points excluded",
+              "all Q measurements")
 
 write_csv(rc, "data/rating_curves/modified_ZQ_curves.csv")
 # look across sites on the two dates where multiple were measured. ####
