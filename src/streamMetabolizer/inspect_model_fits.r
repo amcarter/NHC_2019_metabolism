@@ -3,8 +3,118 @@
 library(ks)
 library(zoo)
 library(tidyverse)
+library(streamMetabolizer)
 #setwd('C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data')
 
+# Cleaning and summarizing ####
+filter_model <- function(fit, flow_dates, GPP_min = 0, ER_max = 0){
+  preds <- get_fit(fit)$daily  %>%
+    select(date, GPP = GPP_daily_50pct, 
+           GPP.lower = GPP_daily_2.5pct, GPP.upper = GPP_daily_97.5pct,
+           ER = ER_daily_50pct, 
+           ER.lower = ER_daily_2.5pct, ER.upper = ER_daily_97.5pct,
+           K600 = K600_daily_50pct, 
+           K600_2.5 = K600_daily_2.5pct, K600_97.5 = K600_daily_97.5pct,
+           GPP_Rhat = GPP_daily_Rhat, ER_Rhat = ER_daily_Rhat, 
+           K600_Rhat = K600_daily_Rhat, errors) %>%
+    left_join(flow_dates[,c(1,4)]) %>%
+    mutate(badGPP = case_when(good_flow == FALSE ~ 1,
+                              GPP.upper < GPP_min ~ 1,
+                              GPP_Rhat > 1.05 ~ 1,
+                              K600_Rhat > 1.05 ~ 1,
+                              is.na(GPP) ~ 1,
+                              TRUE ~ 0),
+           badER = case_when(good_flow == FALSE ~ 1,
+                             ER.lower > ER_max ~ 1,
+                             ER_Rhat > 1.05 ~ 1,
+                             K600_Rhat > 1.05 ~ 1,
+                             is.na(ER) ~ 1,
+                             TRUE ~ 0))
+  
+  
+  coverage <- data.frame(missing_data = sum(preds$errors != ""),
+                         bad_flow = sum(preds$good_flow == FALSE, na.rm = T),
+                         neg_GPP = sum(preds$GPP.upper < GPP_min, na.rm = T),
+                         pos_ER = sum(preds$ER.lower > ER_max, na.rm = T),
+                         bad_Rhat = sum(preds$K600_Rhat > 1.05 |
+                                          preds$ER_Rhat > 1.05 |
+                                          preds$GPP_Rhat > 1.05, na.rm = T),
+                         lost_GPP = sum(preds$badGPP),
+                         lost_ER = sum(preds$badER),
+                         total_days = nrow(preds))
+  preds <- preds %>% 
+    mutate(across(starts_with("ER", ignore.case = F), 
+                  ~ case_when(badER == 1 ~ NA_real_,
+                              TRUE ~ .)),
+           across(starts_with("GPP"), ~ case_when(badGPP == 1 ~ NA_real_,
+                                                 TRUE ~ .)),
+           across(starts_with("K600"), ~ case_when(badER == 1 ~ NA_real_,
+                                                  TRUE ~ .)),
+           GPP = case_when(GPP < 0 ~ 0,
+                           TRUE ~ GPP),
+           ER = case_when(ER > 0 ~ 0,
+                          TRUE ~ ER)) %>%
+    select(-badER, -badGPP)
+        
+  return(list(preds, coverage))
+
+}
+
+fill_summarize_met <- function(preds){
+  w <- range(c(which(!is.na(preds$GPP)), which(!is.na(preds$ER))))
+  preds <- preds[w[1]:w[2],] 
+  met <- preds %>%
+    summarize(gpp_mean = mean(GPP, na.rm = T),
+              gpp_median = median(GPP, na.rm = T),
+              gpp_max = max(GPP, na.rm = T),
+              er_mean = mean(ER, na.rm = T),
+              er_median = median(ER, na.rm = T),
+              er_max = min(ER, na.rm = T))
+  cum <- data.frame(date = seq(preds$date[1], preds$date[nrow(preds)], by = "day")) %>%
+    as_tibble() %>%
+    left_join(preds) %>%
+    select(-ends_with("Rhat"), -starts_with("K600"), -good_flow, -errors) %>%
+    mutate(across(-date, na.approx, na.rm = F)) %>%
+    mutate(across(-date, cumsum, .names = "{col}_cum")) 
+  n <- nrow(cum)
+  l = (n-6)
+  weekly <- tibble(date = cum$date[1:l],
+                   GPP_week = rep(NA_real_, l),
+                   ER_week = rep(NA_real_, l))
+  for(i in 1:l){
+    weekly$GPP_week[i] <- sum(cum$GPP[i:i+6]) 
+    weekly$ER_week[i] <- sum(cum$ER[i:i+6]) 
+  }
+  met$gpp_maxweek <- weekly$date[which.max(weekly$GPP_week)]
+  met$er_maxweek <- weekly$date[which.min(weekly$ER_week)]
+  met$gpp_cum <- cum$GPP_cum[n]*n/365
+  met$er_cum <- cum$ER_cum[n]*n/365
+  met$daterange <- as.character(paste(cum$date[1], "-", cum$date[nrow(cum)]))
+  met$pctcoverage <- sum(!is.na(preds$GPP))/nrow(cum)
+  
+  return(list(cum = cum, met = met))
+  
+}
+
+
+# plots####
+plot_zoom <- function(dat, vars = c("DO.obs", "DO.mod"),
+                      ordby = "solar.time"){
+  ob <- dat[,ordby, drop = T]
+  tt <- dat %>%
+    select(any_of(vars)) %>%
+    xts(order.by = ob)
+  if("DO.mod" %in% vars){
+    tt %>%
+      dygraph() %>%
+      dySeries("DO.mod", drawPoints = TRUE, strokeWidth = 0) %>%
+      dyRangeSelector()
+  } else {
+    tt %>%
+      dygraph() %>%
+      dyRangeSelector()
+  }
+}
 
 plot_rhats <- function(fit){
   rh <- get_fit(fit)$daily %>%
@@ -70,7 +180,7 @@ plot_KvER <- function(fit){
   mtext(paste0("pearson's correlation = ", pcor),
         side = 3, line = 0, adj = 1, cex = .8)
 }
-plot_metab <- function(met, ylim = NULL, doy = F){
+plot_metab <- function(met, ylim = NULL, doy = F, main = ""){
 
   yrange = range(c(met$GPP.upper, met$ER.lower), na.rm = T)
   
@@ -80,7 +190,7 @@ plot_metab <- function(met, ylim = NULL, doy = F){
       mutate(date = doy) %>%
       arrange(date)
     }
-  plot(met$date, met$GPP, 
+  plot(met$date, met$GPP, main = main,
        type = "l", lwd = 2, col = "forestgreen",
        ylim = yrange, xlab = "date", ylab = "gO2/m2/d")  
   lines(met$date, met$ER, 
