@@ -18,7 +18,8 @@ library(dygraphs)
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data")
 
 ## Read in Data ####
-sites <- read_csv("siteData/NHCsite_metadata.csv")
+sites <- read_csv("siteData/NHCsite_metadata.csv") %>%
+  slice(1:7)
 
 # select variables for metabolism
 read_metdata <- function(site){
@@ -29,10 +30,10 @@ read_metdata <- function(site){
 
 NHC <- read_metdata("NHC")
 PM <- read_metdata("PM")
-CBP <- read_metdata("CBP_lvl")
+CBP <- read_metdata("CBP")
 WB <- read_metdata("WB")
 WBP <- read_metdata("WBP")
-# PWC <- read_metdata("PWC")
+PWC <- read_metdata("PWC")
 UNHC <- read_metdata("UNHC")
 
 
@@ -73,7 +74,7 @@ set_up_model <- function(dat, bayes_name, nodes ){
 
   ## Set bayes specs
   bayes_specs <- specs(bayes_name)
-  bayes_specs$keep_mcmcs <- FALSE
+  bayes_specs$keep_mcmc_data <- FALSE
   ## Based on range of log daily Q
   daily <- dat %>%
     mutate(date = as.Date(solar.time)) %>% group_by(date) %>%
@@ -81,7 +82,7 @@ set_up_model <- function(dat, bayes_name, nodes ){
   
   bayes_specs$K600_lnQ_nodes_centers <- nodes$lnQ
   bayes_specs$K600_lnQ_nodes_meanlog <- (nodes$lnK600)
-  bayes_specs$K600_lnQ_nodes_sdlog <- c(rep(0.01, nrow(nodes)))
+  bayes_specs$K600_lnQ_nodes_sdlog <- c(rep(0.7, nrow(nodes)))
 
   ## Change sigma
   bayes_specs$K600_daily_sigma_sigma <- 0.05
@@ -89,105 +90,123 @@ set_up_model <- function(dat, bayes_name, nodes ){
   return(bayes_specs)
 }
 
-# Fixed K model ####
-
-# the only place that Q enters into the model is to predict the K-Q relationship
-# for this reason, we can use a fake Q as nodes and with our data to simplify
-# using a fixed K/Q relationship as a prior. In this case, we are binning the 
-# data and then replacing everything within each bin with a node, assigned to 
-# the corresponding K derived from the Hall 1972 paper
-
-prep_fake_Q <- function(dat, bayes_specs_fixedK){
-  dat <- dat %>% 
-    mutate(date = as.Date(solar.time)) 
-  daily <- dat %>%
-    group_by(date) %>%
-    summarize(discharge = mean(discharge, na.rm = T)) %>%
-    mutate(logQ = log(discharge))
-  
-  nbins <-  length(bayes_specs_fixedK$K600_lnQ_nodes_centers)
-  
-  Qbreaks <- c(bayes_specs_fixedK$K600_lnQ_nodes_centers[1] -
-               diff(bayes_specs_fixedK$K600_lnQ_nodes_centers)[1]/2,
-               bayes_specs_fixedK$K600_lnQ_nodes_centers +
-               diff(bayes_specs_fixedK$K600_lnQ_nodes_centers)[1]/2)
-  rQ <- range(daily$logQ, na.rm = T)          
-  if(Qbreaks[1] > rQ[1]){Qbreaks[1] <- rQ[1]}
-  if(Qbreaks[nbins] < rQ[2]){Qbreaks[nbins] <- rQ[2]}
-  
-  daily <- daily %>%
-    mutate(Q = cut(daily$logQ, Qbreaks, labels = 1:nbins)) %>%
-    select(date, Q)
-  daily$Q <- as.numeric(daily$Q)
-  dat <- left_join(dat, daily, by = "date") %>%
-    select(-discharge) %>%
-    mutate(discharge = exp(Q)) %>%
-    select(-Q,-date)
-
-  return(dat)
-
-}
-
 
 # Model Runs ####
 # CBP 
 bayes_specs_Hall <- set_up_model(CBP, bayes_name, 
                                  kq_hall[kq_hall$site =="CBP",])
-# dat <- prep_fake_Q(CBP, bayes_specs_Hall)
-# bayes_specs_Hall$K600_lnQ_nodes_centers <- 
-#   seq(1:length(bayes_specs_Hall$K600_lnQ_nodes_centers))
 fit <- metab(bayes_specs_Hall, CBP)
-saveRDS(fit, "metabolism/modeled/fit_cbp_fixed_hallK.rds")
+saveRDS(fit, "metabolism/modeled/fit_cbp_prior_churchillK.rds")
+rm(fit)
+gc()
+
+bayes_specs_Hall$K600_lnQ_nodes_sdlog <- c(rep(0.05, 
+                                          length(bayes_specs_Hall$K600_lnQ_nodes_sdlog)))
+fit <- metab(bayes_specs_Hall, CBP)
+saveRDS(fit, "metabolism/modeled/fit_cbp_fixed_churchillK.rds")
+rm(fit)
+gc()
 
 # PM 
 bayes_specs_Hall <- set_up_model(PM, bayes_name, 
                                  kq_hall[kq_hall$site =="PM",])
-# dat <- prep_fake_Q(PM, bayes_specs_Hall)
-# bayes_specs_Hall$K600_lnQ_nodes_centers <- 
-#   seq(1:length(bayes_specs_Hall$K600_lnQ_nodes_centers))
 fit <- metab(bayes_specs_Hall, PM)
-saveRDS(fit, "metabolism/modeled/fit_pm_fixed_hallK.rds")
+saveRDS(fit, "metabolism/modeled/fit_pm_prior_churchillK.rds")
+rm(fit)
+gc()
+
+bayes_specs_Hall$K600_lnQ_nodes_sdlog <- c(rep(0.05, 
+                                          length(bayes_specs_Hall$K600_lnQ_nodes_sdlog)))
+fit <- metab(bayes_specs_Hall, PM)
+saveRDS(fit, "metabolism/modeled/fit_pm_fixed_churchillK.rds")
+rm(fit)
+gc()
 
 # WB 
 bayes_specs_Hall <- set_up_model(WB, bayes_name, 
                                  kq_hall[kq_hall$site =="WB",])
-# dat <- prep_fake_Q(WB, bayes_specs_Hall)
-# bayes_specs_Hall$K600_lnQ_nodes_centers <- 
-#   seq(1:length(bayes_specs_Hall$K600_lnQ_nodes_centers))
 fit <- metab(bayes_specs_Hall, WB)
-saveRDS(fit, "metabolism/modeled/fit_wb_fixed_hallK.rds")
+saveRDS(fit, "metabolism/modeled/fit_wb_prior_churchillK.rds")
+rm(fit)
+gc()
+
+bayes_specs_Hall$K600_lnQ_nodes_sdlog <- c(rep(0.05, 
+                                          length(bayes_specs_Hall$K600_lnQ_nodes_sdlog)))
+fit <- metab(bayes_specs_Hall, WB)
+saveRDS(fit, "metabolism/modeled/fit_wb_fixed_churchillK.rds")
+rm(fit)
+gc()
 
 # WBP 
 bayes_specs_Hall <- set_up_model(WBP, bayes_name, 
                                  kq_hall[kq_hall$site =="WBP",])
-# dat <- prep_fake_Q(WBP, bayes_specs_Hall)
-# bayes_specs_Hall$K600_lnQ_nodes_centers <- 
-#   seq(1:length(bayes_specs_Hall$K600_lnQ_nodes_centers))
 fit <- metab(bayes_specs_Hall, WBP)
-saveRDS(fit, "metabolism/modeled/fit_wbp_fixed_hallK.rds")
+saveRDS(fit, "metabolism/modeled/fit_wbp_prior_churchillK.rds")
+rm(fit)
+gc()
+
+bayes_specs_Hall$K600_lnQ_nodes_sdlog <- c(rep(0.05, 
+                                          length(bayes_specs_Hall$K600_lnQ_nodes_sdlog)))
+fit <- metab(bayes_specs_Hall, WBP)
+saveRDS(fit, "metabolism/modeled/fit_wbp_fixed_churchillK.rds")
+rm(fit)
+gc()
+
+# PWC 
+bayes_specs_Hall <- set_up_model(PWC, bayes_name, 
+                                 kq_hall[kq_hall$site =="PWC",])
+fit <- metab(bayes_specs_Hall, PWC)
+saveRDS(fit, "metabolism/modeled/fit_pwc_prior_churchillK.rds")
+rm(fit)
+gc()
+
+bayes_specs_Hall$K600_lnQ_nodes_sdlog <- c(rep(0.05, 
+                                          length(bayes_specs_Hall$K600_lnQ_nodes_sdlog)))
+fit <- metab(bayes_specs_Hall, PWC)
+saveRDS(fit, "metabolism/modeled/fit_pwc_fixed_churchillK.rds")
+rm(fit)
+gc()
 
 # NHC 
-for(i in seq(2017:2019)){
-  dat <- NHC %>% filter(year(solar.time) == i)
+for(i in 2017:2019){
+  dd = ymd_hms(paste0((i-1),"-03-01 04:00:00"))
+  dat <- NHC %>% 
+    filter(solar.time >= dd,
+           solar.time <= dd + 365*24*60*60)
   bayes_specs_Hall <- set_up_model(dat, bayes_name, 
                                    kq_hall[kq_hall$site =="NHC",])
-  # dat <- prep_fake_Q(dat, bayes_specs_Hall)
-  # bayes_specs_Hall$K600_lnQ_nodes_centers <- 
-  #   seq(1:length(bayes_specs_Hall$K600_lnQ_nodes_centers))
   fit <- metab(bayes_specs_Hall, dat)
-  saveRDS(fit, paste0("metabolism/modeled/fit_nhc",i,"_fixed_hallK.rds"))
+  saveRDS(fit, paste0("metabolism/modeled/fit_nhc_",i,"_prior_churchillK.rds"))
+  rm(fit)
+  gc()
+  
+  bayes_specs_Hall$K600_lnQ_nodes_sdlog <- c(rep(0.05, 
+                                            length(bayes_specs_Hall$K600_lnQ_nodes_sdlog)))
+  fit <- metab(bayes_specs_Hall, dat)
+  saveRDS(fit, paste0("metabolism/modeled/fit_nhc_",i,"_fixed_churchillK.rds"))
+  rm(fit)
+  gc()
 }
 
 # UNHC 
-for(i in seq(2017:2019)){
-  dat <- UNHC %>% filter(year(solar.time) == i)
+for(i in 2017:2019){
+  dd = ymd_hms(paste0((i-1),"-03-01 04:00:00"))
+  dat <- UNHC %>% 
+    filter(solar.time >= dd,
+           solar.time <= dd + 365*24*60*60)
   bayes_specs_Hall <- set_up_model(dat, bayes_name, 
                                    kq_hall[kq_hall$site =="UNHC",])
-  # dat <- prep_fake_Q(dat, bayes_specs_Hall)
-  # bayes_specs_Hall$K600_lnQ_nodes_centers <- 
-  #   seq(1:length(bayes_specs_Hall$K600_lnQ_nodes_centers))
-  fit <- metab(bayes_specs_Hall, UNHC)
-  saveRDS(fit, paste0("metabolism/modeled/fit_unhc",i,"_fixed_hallK.rds"))
+  fit <- metab(bayes_specs_Hall, dat)
+  saveRDS(fit, paste0("metabolism/modeled/fit_unhc_",y,"_prior_churchillK.rds"))
+  rm(fit)
+  gc()
+  
+  bayes_specs_Hall$K600_lnQ_nodes_sdlog <- c(rep(0.05, 
+                                            length(bayes_specs_Hall$K600_lnQ_nodes_sdlog)))
+  fit <- metab(bayes_specs_Hall, dat)
+  saveRDS(fit, paste0("metabolism/modeled/fit_unhc_",y,"_fixed_churchillK.rds"))
+  rm(fit)
+  gc()
 }
 
 # #inspect fits ####
@@ -347,3 +366,43 @@ dev.off()
 
 
 
+
+
+# Fixed K model ####
+
+# the only place that Q enters into the model is to predict the K-Q relationship
+# for this reason, we can use a fake Q as nodes and with our data to simplify
+# using a fixed K/Q relationship as a prior. In this case, we are binning the 
+# data and then replacing everything within each bin with a node, assigned to 
+# the corresponding K derived from the Hall 1972 paper
+
+# prep_fake_Q <- function(dat, bayes_specs_fixedK){
+#   dat <- dat %>% 
+#     mutate(date = as.Date(solar.time)) 
+#   daily <- dat %>%
+#     group_by(date) %>%
+#     summarize(discharge = mean(discharge, na.rm = T)) %>%
+#     mutate(logQ = log(discharge))
+#   
+#   nbins <-  length(bayes_specs_fixedK$K600_lnQ_nodes_centers)
+#   
+#   Qbreaks <- c(bayes_specs_fixedK$K600_lnQ_nodes_centers[1] -
+#                diff(bayes_specs_fixedK$K600_lnQ_nodes_centers)[1]/2,
+#                bayes_specs_fixedK$K600_lnQ_nodes_centers +
+#                diff(bayes_specs_fixedK$K600_lnQ_nodes_centers)[1]/2)
+#   rQ <- range(daily$logQ, na.rm = T)          
+#   if(Qbreaks[1] > rQ[1]){Qbreaks[1] <- rQ[1]}
+#   if(Qbreaks[nbins] < rQ[2]){Qbreaks[nbins] <- rQ[2]}
+#   
+#   daily <- daily %>%
+#     mutate(Q = cut(daily$logQ, Qbreaks, labels = 1:nbins)) %>%
+#     select(date, Q)
+#   daily$Q <- as.numeric(daily$Q)
+#   dat <- left_join(dat, daily, by = "date") %>%
+#     select(-discharge) %>%
+#     mutate(discharge = exp(Q)) %>%
+#     select(-Q,-date)
+# 
+#   return(dat)
+# 
+# }

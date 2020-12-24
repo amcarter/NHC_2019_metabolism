@@ -294,6 +294,7 @@ points(cchars$octdepth_m, cchars$octavg_depth, pch = 20, col = 3)
 points(long$mardepth_m, long$width_m, pch = 20, col = 5)
 points(nhc_reaches$depth_max, nhc_reaches$depth_avg, pch = 20, col = 5)
 
+write_csv(cchars, "rating_curves/calculated_channel_dimensions_maroct.csv")
 # the depth to avg depth relationship is great, the others, not so much!
 
 specs <- q %>% 
@@ -429,3 +430,8 @@ for(i in c(4,6)){
 
 write_csv(specs, "rating_curves/depth_discharge_points.csv")
 write_csv(DQ, "rating_curves/depth_discharge_relationship_LM1953.csv")
+specs <- read_csv("rating_curves/depth_discharge_points.csv")
+DQ <- read_csv("rating_curves/depth_discharge_relationship_LM1953.csv")
+
+ggplot(specs, aes(avg_depth, avg_width, color = site))+
+  geom_point()

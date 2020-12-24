@@ -8,6 +8,7 @@ library(lubridate)
 library(tidyverse)
 library(dygraphs)
 library(xts)
+library(zoo)
 
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/")
 source("../src/helpers.R")
@@ -19,7 +20,7 @@ ll <- read_csv("rating_curves/all_sites_level_corrected.csv",
 Qdat <- read_csv("rating_curves/interpolatedQ_allsites_modified.csv", 
                  guess_max = 10000)
 nhcQ <- read_csv("rating_curves/NHC_UNHC_Q.csv", guess_max = 10000) %>%
-  select(DateTime_UTC, NHC.Q = NHC_Q, UNHC.Q = UNHC_Q) %>%
+  select(DateTime_UTC, NHC.Q = NHC_Q, UNHC.Q = UNHC_Q, AirPres_kPa) %>%
   full_join(Qdat) %>% 
   arrange(DateTime_UTC)
 filelist <- list.files("metabolism/raw")
@@ -93,15 +94,10 @@ prep_file <- function(filename, sites, Qdat,
   #Load discharge data
   dat <- get_Q(dat, Qdat) 
   
-  #Convert datetime to solar time 
-  dat$DateTime_EST <- with_tz(dat$DateTime_UTC, tz="EST") # convert to EST timezone
-  dat$solar.time <- calc_solar_time(dat$DateTime_EST, longitude=lon)
-  
   # Calculate DO saturation, depth, light
   dat$AirPres_mbar <- dat$AirPres_kPa*10
   dat$DO.sat <- calc_DO_sat(dat$WaterTemp_C, dat$AirPres_mbar,
                             salinity.water = 0, model = "garcia-benson")
-  dat$light <- calc_light(dat$solar.time, latitude=lat,longitude=lon)
   
   # This number is probably not very representative and 
   # needs to be changed based on field data
@@ -115,13 +111,29 @@ prep_file <- function(filename, sites, Qdat,
   } else {
     dat$level_m <- calc_water_level(dat, sites)
   }
+  
+  dates <- data.frame(DateTime_UTC = seq(min(dat$DateTime_UTC, na.rm = T),
+                                         max(dat$DateTime_UTC, na.rm = T),
+                                         by = "15 min"))
+
+  dat <- dates %>%
+    left_join(dat) %>% 
+    # select(-site)%>%
+    mutate(across(-c("DateTime_UTC", "site"), na.approx, na.rm = F)) %>%
+    as_tibble()
+    
+  #Convert datetime to solar time 
+  dat$DateTime_EST <- with_tz(dat$DateTime_UTC, tz="EST") # convert to EST timezone
+  dat$solar.time <- calc_solar_time(dat$DateTime_EST, longitude=lon)
+  dat$light <- calc_light(dat$solar.time, latitude=lat,longitude=lon)
+  
   # rename variables needed for metabolism model
-  dat <- dat %>% 
+  dat <- dat %>%
     select(-DateTime_EST, -AirPres_mbar, -AirPres_kPa, 
            -WaterPres_kPa) %>%
     rename(DO.obs = DO_mgL, 
            temp.water = WaterTemp_C)
-  
+    
   return(dat)
 }
 
