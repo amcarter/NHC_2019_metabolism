@@ -113,42 +113,42 @@ set_up_model <- function(dat, bayes_name, site, one = T){
 # CBP 
 bayes_specs <- set_up_model(CBP, bayes_name, "CBP", one = F)
 fit <- metab(bayes_specs, CBP)
-saveRDS(fit, "metabolism/modeled/fit_cbp_uninformed_raymondK.rds")
+saveRDS(fit, "metabolism/modeled/fit_cbp_uninformed_raymond_K.rds")
 rm(fit)
 gc()
 
 # PM 
 bayes_specs <- set_up_model(PM, bayes_name, "PM", one = F)
 fit <- metab(bayes_specs, PM)
-saveRDS(fit, "metabolism/modeled/fit_pm_uninformed_raymondK.rds")
+saveRDS(fit, "metabolism/modeled/fit_pm_uninformed_raymond_K.rds")
 rm(fit)
 gc()
 
 # WB 
 bayes_specs <- set_up_model(WB, bayes_name, "WB", one = F)
 fit <- metab(bayes_specs, WB)
-saveRDS(fit, "metabolism/modeled/fit_wb_uninformed_raymondK.rds")
+saveRDS(fit, "metabolism/modeled/fit_wb_uninformed_raymond_K.rds")
 rm(fit)
 gc()
 
 # WBP 
 bayes_specs <- set_up_model(WBP, bayes_name, "WBP", one = F)
 fit <- metab(bayes_specs, WBP)
-saveRDS(fit, "metabolism/modeled/fit_wbp_uninformed_raymondK.rds")
+saveRDS(fit, "metabolism/modeled/fit_wbp_uninformed_raymond_K.rds")
 rm(fit)
 gc()
 
 # PWC 
 bayes_specs <- set_up_model(PWC, bayes_name, "PWC", one = F)
 fit <- metab(bayes_specs, PWC)
-saveRDS(fit, "metabolism/modeled/fit_pwc_uninformed_raymondK.rds")
+saveRDS(fit, "metabolism/modeled/fit_pwc_uninformed_raymond_K.rds")
 rm(fit)
 gc()
 
 # NHC 
-for(i in 2017:2019){
-  dd = ymd_hms(paste0((i-1),"-03-01 04:00:00"))
-  dat <- UNHC %>% 
+for(i in 2016:2019){
+  dd = ymd_hms(paste0(i,"-03-01 04:00:00"))
+  dat <- NHC %>% 
     filter(solar.time >= dd,
            solar.time <= dd + 365*24*60*60)
   bayes_specs <- set_up_model(dat, bayes_name, "NHC", one = F)
@@ -158,8 +158,8 @@ for(i in 2017:2019){
   gc()
 }
 # UNHC 
-for(i in 2017:2019){
-  dd = ymd_hms(paste0((i-1),"-03-01 04:00:00"))
+for(i in 2016:2019){
+  dd = ymd_hms(paste0((i),"-03-01 04:00:00"))
   dat <- UNHC %>% 
     filter(solar.time >= dd,
            solar.time <= dd + 365*24*60*60)

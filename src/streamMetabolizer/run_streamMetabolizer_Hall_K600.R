@@ -12,8 +12,6 @@ library(ggplot2)
 library(streamMetabolizer)
 library(lubridate)
 library(dygraphs)
-# library(imputeTS)
-# library(parallel)
 
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data")
 
@@ -168,8 +166,8 @@ rm(fit)
 gc()
 
 # NHC 
-for(i in 2017:2019){
-  dd = ymd_hms(paste0((i-1),"-03-01 04:00:00"))
+for(i in 2016:2019){
+  dd = ymd_hms(paste0((i),"-03-01 04:00:00"))
   dat <- NHC %>% 
     filter(solar.time >= dd,
            solar.time <= dd + 365*24*60*60)
@@ -189,22 +187,22 @@ for(i in 2017:2019){
 }
 
 # UNHC 
-for(i in 2017:2019){
-  dd = ymd_hms(paste0((i-1),"-03-01 04:00:00"))
+for(i in 2016:2019){
+  dd = ymd_hms(paste0(i,"-03-01 04:00:00"))
   dat <- UNHC %>% 
     filter(solar.time >= dd,
            solar.time <= dd + 365*24*60*60)
   bayes_specs_Hall <- set_up_model(dat, bayes_name, 
                                    kq_hall[kq_hall$site =="UNHC",])
   fit <- metab(bayes_specs_Hall, dat)
-  saveRDS(fit, paste0("metabolism/modeled/fit_unhc_",y,"_prior_churchillK.rds"))
+  saveRDS(fit, paste0("metabolism/modeled/fit_unhc_",i,"_prior_churchillK.rds"))
   rm(fit)
   gc()
   
   bayes_specs_Hall$K600_lnQ_nodes_sdlog <- c(rep(0.05, 
                                             length(bayes_specs_Hall$K600_lnQ_nodes_sdlog)))
   fit <- metab(bayes_specs_Hall, dat)
-  saveRDS(fit, paste0("metabolism/modeled/fit_unhc_",y,"_fixed_churchillK.rds"))
+  saveRDS(fit, paste0("metabolism/modeled/fit_unhc_",i,"_fixed_churchillK.rds"))
   rm(fit)
   gc()
 }

@@ -119,7 +119,8 @@ prep_file <- function(filename, sites, Qdat,
   dat <- dates %>%
     left_join(dat) %>% 
     # select(-site)%>%
-    mutate(across(-c("DateTime_UTC", "site"), na.approx, na.rm = F)) %>%
+    mutate(across(-c("DateTime_UTC", "site"), 
+                  na.approx, na.rm = F, maxgap = 12)) %>%
     as_tibble()
     
   #Convert datetime to solar time 

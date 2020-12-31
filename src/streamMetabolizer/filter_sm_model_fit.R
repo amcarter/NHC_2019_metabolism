@@ -16,15 +16,15 @@ library(dygraphs)
 # library(parallel)
 
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data")
-
-## Read in and format Data ####
+source("../src/streamMetabolizer/inspect_model_fits.r")
+## Filter bad flow days ####
 sites <- read_csv("siteData/NHCsite_metadata.csv") %>%
   slice(1:7)
 
-fit <- readRDS("metabolism/modeled/fit_cbp_fixed_hallK.rds")
-preds <- predict_metab(fit)
-hist(preds$ER.lower)
-plot_rhats(fit)
+# fit <- readRDS("metabolism/modeled/fit_cbp_fixed_hallK.rds")
+# preds <- predict_metab(fit)
+# hist(preds$ER.lower)
+# plot_rhats(fit)
 
 # filter high flow days and impossible values #
 deltaQ_max = 2
@@ -58,21 +58,297 @@ flow_dates <- nhcQ %>%
   select(date, nhc_q, deltaQ, good_flow) %>%
   filter(!is.na(good_flow))
 
-
+write_csv(flow_dates, "rating_curves/flow_dates_filter.csv")
 plot_zoom(fit@data)#, colnames(fit@data)[-c(1,2,7,8)])
 
+
+
+# fix interpolated model outputs ####
+# the most recent runs (12/27/2020) interpolated huge gaps, so I am going to 
+# cut that and resave the fits
+
+# # cbp
+# fit <- readRDS(paste0("metabolism/modeled/churchill_fixed/", filelist[1]))
+# fit <- readRDS(paste0("metabolism/modeled/churchill/", filelist[1]))
+# fit <- readRDS(paste0("metabolism/modeled/raymond/", filelist[1]))
+# file
+# dd <- ymd_hms(c("2019-05-14 16:14:46",
+#                 "2019-06-03 15:59:46",
+#                 "2019-08-30 18:44:46",
+#                 "2019-09-12 18:44:46"))
+# dt <- as.Date(dd)
+# fit@data[fit@data$solar.time >= dd[1] &
+#            fit@data$solar.time <= dd[2],3:9] <- NA
+# fit@data[fit@data$solar.time >= dd[3] &
+#            fit@data$solar.time <= dd[4],3:9] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[1] &
+#                 fit@fit$daily$date <= dt[2],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[1] &
+#                 fit@fit$daily$date <= dt[2],74] <- "missing data"
+# fit@fit$daily[fit@fit$daily$date >= dt[3] &
+#                 fit@fit$daily$date <= dt[4],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[3] &
+#                 fit@fit$daily$date <= dt[4],74] <- "missing data"
+# fit@data_daily[fit@data_daily$date >= dt[1] &
+#                  fit@data_daily$date <= dt[2],2:7] <- NA
+# fit@data_daily[fit@data_daily$date >= dt[3] &
+#                  fit@data_daily$date <= dt[4],2:7] <- NA
+# saveRDS(fit, paste0("metabolism/modeled/churchill_fixed/", filelist[1]))
+# saveRDS(fit, paste0("metabolism/modeled/churchill/", filelist[1]))
+# saveRDS(fit, paste0("metabolism/modeled/raymond/", filelist[1]))
+
+# # nhc 2016
+# fit <- readRDS(paste0("metabolism/modeled/churchill_fixed/", filelist[2]))
+# fit <- readRDS(paste0("metabolism/modeled/churchill/", filelist[2]))
+# fit <- readRDS(paste0("metabolism/modeled/raymond/", filelist[2]))
+# file
+# dd <- ymd_hms(c("2016-11-22 09:44:51",
+#                 "2016-12-08 08:59:51",
+#                 "2016-12-11 04:14:51",
+#                 "2016-12-28 07:14:51"))
+# dt <- as.Date(dd)
+# fit@data[fit@data$solar.time >= dd[1] &
+#            fit@data$solar.time <= dd[2],3:9] <- NA
+# fit@data[fit@data$solar.time >= dd[3] &
+#            fit@data$solar.time <= dd[4],3:9] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[1] &
+#                 fit@fit$daily$date <= dt[2],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[1] &
+#                 fit@fit$daily$date <= dt[2],74] <- "missing data"
+# fit@fit$daily[fit@fit$daily$date >= dt[3] &
+#                 fit@fit$daily$date <= dt[4],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[3] &
+#                 fit@fit$daily$date <= dt[4],74] <- "missing data"
+# fit@data_daily[fit@data_daily$date >= dt[1] &
+#                  fit@data_daily$date <= dt[2],2:7] <- NA
+# fit@data_daily[fit@data_daily$date >= dt[3] &
+#                  fit@data_daily$date <= dt[4],2:7] <- NA
+# saveRDS(fit, "metabolism/modeled/churchill_fixed/fit_nhc_2016_fixed_churchillK.rds")
+# saveRDS(fit, "metabolism/modeled/churchill/fit_nhc_2016_prior_churchillK.rds")
+# saveRDS(fit, "metabolism/modeled/raymond/fit_nhc_2016_uninformed_raymondK.rds")
+
+# # nhc 2017
+# fit <- readRDS(paste0("metabolism/modeled/churchill_fixed/", filelist[3]))
+# fit <- readRDS(paste0("metabolism/modeled/churchill/", filelist[3]))
+# fit <- readRDS(paste0("metabolism/modeled/raymond/", filelist[3]))
+# file
+# dd <- ymd_hms(c("2017-05-16 08:29:51",
+#                 "2017-05-30 10:59:51",
+#                 "2017-06-21 09:29:51",
+#                 "2017-06-27 16:14:51",
+#                 "2017-08-01 09:44:51",
+#                 "2017-08-09 10:44:51",
+#                 "2017-08-17 11:59:51",
+#                 "2017-08-18 12:29:51"))
+# dt <- as.Date(dd)
+# fit@data[fit@data$solar.time >= dd[1] &
+#            fit@data$solar.time <= dd[2],3:9] <- NA
+# fit@data[fit@data$solar.time >= dd[3] &
+#            fit@data$solar.time <= dd[4],3:9] <- NA
+# fit@data[fit@data$solar.time >= dd[5] &
+#            fit@data$solar.time <= dd[6],3:9] <- NA
+# fit@data[fit@data$solar.time >= dd[7] &
+#            fit@data$solar.time <= dd[8],3:9] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[1] &
+#                 fit@fit$daily$date <= dt[2],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[1] &
+#                 fit@fit$daily$date <= dt[2],74] <- "missing data"
+# fit@fit$daily[fit@fit$daily$date >= dt[3] &
+#                 fit@fit$daily$date <= dt[4],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[3] &
+#                 fit@fit$daily$date <= dt[4],74] <- "missing data"
+# fit@fit$daily[fit@fit$daily$date >= dt[5] &
+#                 fit@fit$daily$date <= dt[6],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[5] &
+#                 fit@fit$daily$date <= dt[6],74] <- "missing data"
+# fit@fit$daily[fit@fit$daily$date >= dt[7] &
+#                 fit@fit$daily$date <= dt[8],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[7] &
+#                 fit@fit$daily$date <= dt[8],74] <- "missing data"
+# fit@data_daily[fit@data_daily$date >= dt[1] &
+#                  fit@data_daily$date <= dt[2],2:7] <- NA
+# fit@data_daily[fit@data_daily$date >= dt[3] &
+#                  fit@data_daily$date <= dt[4],2:7] <- NA
+# fit@data_daily[fit@data_daily$date >= dt[5] &
+#                  fit@data_daily$date <= dt[6],2:7] <- NA
+# fit@data_daily[fit@data_daily$date >= dt[7] &
+#                  fit@data_daily$date <= dt[8],2:7] <- NA
+# saveRDS(fit, "metabolism/modeled/churchill_fixed/fit_nhc_2017_fixed_churchillK.rds")
+# saveRDS(fit, "metabolism/modeled/churchill/fit_nhc_2017_prior_churchillK.rds")
+# saveRDS(fit, "metabolism/modeled/raymond/fit_nhc_2017_uninformed_raymondK.rds")
+
+# # nhc 2018
+# fit <- readRDS(paste0("metabolism/modeled/churchill_fixed/", filelist[4]))
+# fit <- readRDS(paste0("metabolism/modeled/churchill/", filelist[4]))
+# fit <- readRDS(paste0("metabolism/modeled/raymond/", filelist[4]))
+# file
+# dd <- ymd_hms(c("2018-04-30 11:14:51",
+#                 "2018-05-16 18:14:51",
+#                 "2018-09-11 09:29:51",
+#                 "2018-09-19 09:29:51",
+#                 "2018-12-19 10:29:51",
+#                 "2019-01-07 13:29:51"
+#                 ))
+# dt <- as.Date(dd)
+# fit@data[fit@data$solar.time >= dd[1] &
+#            fit@data$solar.time <= dd[2],3:9] <- NA
+# fit@data[fit@data$solar.time >= dd[3] &
+#            fit@data$solar.time <= dd[4],3:9] <- NA
+# fit@data[fit@data$solar.time >= dd[5] &
+#            fit@data$solar.time <= dd[6],3:9] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[1] &
+#                 fit@fit$daily$date <= dt[2],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[1] &
+#                 fit@fit$daily$date <= dt[2],74] <- "missing data"
+# fit@fit$daily[fit@fit$daily$date >= dt[3] &
+#                 fit@fit$daily$date <= dt[4],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[3] &
+#                 fit@fit$daily$date <= dt[4],74] <- "missing data"
+# fit@fit$daily[fit@fit$daily$date >= dt[5] &
+#                 fit@fit$daily$date <= dt[6],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[5] &
+#                 fit@fit$daily$date <= dt[6],74] <- "missing data"
+# fit@data_daily[fit@data_daily$date >= dt[1] &
+#                  fit@data_daily$date <= dt[2],2:7] <- NA
+# fit@data_daily[fit@data_daily$date >= dt[3] &
+#                  fit@data_daily$date <= dt[4],2:7] <- NA
+# fit@data_daily[fit@data_daily$date >= dt[5] &
+#                  fit@data_daily$date <= dt[6],2:7] <- NA
+# saveRDS(fit, "metabolism/modeled/churchill_fixed/fit_nhc_2018_fixed_churchillK.rds")
+# saveRDS(fit, "metabolism/modeled/churchill/fit_nhc_2018_fixed_churchillK.rds")
+# saveRDS(fit, "metabolism/modeled/raymond/fit_nhc_2018_fixed_churchillK.rds")
+
+# # unhc 2017
+# fit <- readRDS(paste0("metabolism/modeled/churchill_fixed/", filelist[7]))
+# fit <- readRDS(paste0("metabolism/modeled/churchill/", filelist[7]))
+# fit <- readRDS(paste0("metabolism/modeled/raymond/", filelist[7]))
+# 
+# dd <- ymd_hms(c("2017-05-30 08:59:41",
+#                 "2017-06-13 11:44:41",
+#                 "2017-08-01 10:29:41",
+#                 "2017-08-07 14:29:41",
+#                 ))
+# dt <- as.Date(dd)
+# fit@data[fit@data$solar.time >= dd[1] &
+#            fit@data$solar.time <= dd[2],3:9] <- NA
+# fit@data[fit@data$solar.time >= dd[3] &
+#            fit@data$solar.time <= dd[4],3:9] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[1] &
+#                 fit@fit$daily$date <= dt[2],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[1] &
+#                 fit@fit$daily$date <= dt[2],74] <- "missing data"
+# fit@fit$daily[fit@fit$daily$date >= dt[3] &
+#                 fit@fit$daily$date <= dt[4],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[3] &
+#                 fit@fit$daily$date <= dt[4],74] <- "missing data"
+# fit@data_daily[fit@data_daily$date >= dt[1] &
+#                  fit@data_daily$date <= dt[2],2:7] <- NA
+# fit@data_daily[fit@data_daily$date >= dt[3] &
+#                  fit@data_daily$date <= dt[4],2:7] <- NA
+# saveRDS(fit, "metabolism/modeled/churchill_fixed/fit_unhc_2017_fixed_churchillK.rds")
+# saveRDS(fit, "metabolism/modeled/churchill/fit_unhc_2016_prior_churchillK.rds")
+# saveRDS(fit, "metabolism/modeled/raymond/fit_unhc_2016_uninformed_raymondK.rds")
+
+# # unhc 2018
+# fit <- readRDS(paste0("metabolism/modeled/churchill_fixed/", filelist[4]))
+# fit <- readRDS(paste0("metabolism/modeled/churchill/", filelist[4]))
+# fit <- readRDS(paste0("metabolism/modeled/raymond/", filelist[4]))
+# file
+# dd <- ymd_hms(c("2018-04-30 11:14:51",
+#                 "2018-05-16 18:14:51",
+#                 "2018-09-11 09:29:51",
+#                 "2018-09-19 09:29:51",
+#                 "2018-12-19 10:29:51",
+#                 "2019-01-07 13:29:51"
+#                 ))
+# dt <- as.Date(dd)
+# fit@data[fit@data$solar.time >= dd[1] &
+#            fit@data$solar.time <= dd[2],3:9] <- NA
+# fit@data[fit@data$solar.time >= dd[3] &
+#            fit@data$solar.time <= dd[4],3:9] <- NA
+# fit@data[fit@data$solar.time >= dd[5] &
+#            fit@data$solar.time <= dd[6],3:9] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[1] &
+#                 fit@fit$daily$date <= dt[2],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[1] &
+#                 fit@fit$daily$date <= dt[2],74] <- "missing data"
+# fit@fit$daily[fit@fit$daily$date >= dt[3] &
+#                 fit@fit$daily$date <= dt[4],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[3] &
+#                 fit@fit$daily$date <= dt[4],74] <- "missing data"
+# fit@fit$daily[fit@fit$daily$date >= dt[5] &
+#                 fit@fit$daily$date <= dt[6],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[5] &
+#                 fit@fit$daily$date <= dt[6],74] <- "missing data"
+# fit@data_daily[fit@data_daily$date >= dt[1] &
+#                  fit@data_daily$date <= dt[2],2:7] <- NA
+# fit@data_daily[fit@data_daily$date >= dt[3] &
+#                  fit@data_daily$date <= dt[4],2:7] <- NA
+# fit@data_daily[fit@data_daily$date >= dt[5] &
+#                  fit@data_daily$date <= dt[6],2:7] <- NA
+# saveRDS(fit, "metabolism/modeled/churchill_fixed/fit_unhc_2018_fixed_churchillK.rds")
+# saveRDS(fit, "metabolism/modeled/churchill/fit_unhc_2018_fixed_churchillK.rds")
+# saveRDS(fit, "metabolism/modeled/raymond/fit_unhc_2018_fixed_churchillK.rds")
+
+# # pm
+# fit <- readRDS(paste0("metabolism/modeled/churchill_fixed/", filelist[5]))
+# fit <- readRDS(paste0("metabolism/modeled/churchill/", filelist[5]))
+# fit <- readRDS(paste0("metabolism/modeled/raymond/", filelist[5]))
+# file
+# dd <- ymd_hms(c("2019-03-27 09:14:50",
+#                 "2019-04-16 11:29:50",
+#                 "2019-04-22 09:44:50",
+#                 "2019-05-08 14:59:50"))
+# dt <- as.Date(dd)
+# fit@data[fit@data$solar.time >= dd[1] &
+#            fit@data$solar.time <= dd[2],3:9] <- NA
+# fit@data[fit@data$solar.time >= dd[3] &
+#            fit@data$solar.time <= dd[4],3:9] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[1] &
+#                 fit@fit$daily$date <= dt[2],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[1] &
+#                 fit@fit$daily$date <= dt[2],74] <- "missing data"
+# fit@fit$daily[fit@fit$daily$date >= dt[3] &
+#                 fit@fit$daily$date <= dt[4],2:71] <- NA
+# fit@fit$daily[fit@fit$daily$date >= dt[3] &
+#                 fit@fit$daily$date <= dt[4],74] <- "missing data"
+# fit@data_daily[fit@data_daily$date >= dt[1] &
+#                  fit@data_daily$date <= dt[2],2:7] <- NA
+# fit@data_daily[fit@data_daily$date >= dt[3] &
+#                  fit@data_daily$date <= dt[4],2:7] <- NA
+# saveRDS(fit, paste0("metabolism/modeled/churchill_fixed/", filelist[5]))
+# saveRDS(fit, paste0("metabolism/modeled/churchill/", filelist[5]))
+# saveRDS(fit, paste0("metabolism/modeled/raymond/", filelist[5]))
+
+# Compile model outputs ####
+filelist <- list.files("metabolism/modeled/churchill_fixed/")
 GPP_min = 0
 ER_max = 0
 
-filelist <- list.files("metabolism/modeled/nreg")
 met_summary <- data.frame()
 all_preds <- data.frame()
 all_filled_preds <- data.frame()
 
+file <- filelist[1]
+
+ pdf("../figures/model_diagnostics_nightreg.pdf", width = 9, height = 6)
+
 for(file in filelist) {
-  
-  fit <- readRDS(paste0("metabolism/modeled/nreg/", file))
-  tmp <- str_match(string = file, pattern = '^([a-z]+)([0-9]+)?_([a-z]+)')
+  # uninformed churchill ests
+  # fit <- readRDS(paste0("metabolism/modeled/nreg/", file))
+  # tmp <- str_match(string = file, 
+  #                  pattern = '^([a-z]+)([0-9]+)?_([a-z]+_[a-z0-9]+)')
+  # fit <- readRDS(paste0("metabolism/modeled/churchill_uninformed/", file))
+  # fixed churchill ests
+  fit <- readRDS(paste0("metabolism/modeled/churchill_fixed/", file))
+  # churchill ests
+  # fit <- readRDS(paste0("metabolism/modeled/churchill/", file))
+  tmp <- str_match(string = file,
+                   pattern = '^[a-z]+_([a-z]+)_?([0-9]+)?_([a-z]+_[a-zA-Z]+)')
+  # nightreg
+  # fit <- readRDS(paste0("metabolism/modeled/nreg/", file))
+  # tmp <- str_match(string = file, pattern = '^([a-z]+)([0-9]+)?_([a-z]+)')
+  # plot_zoom(fit@data)
   site <- tmp[2]
   method <- tmp[4]
   
@@ -88,7 +364,6 @@ for(file in filelist) {
                          year = year,
                          method = method) 
   coverage <- bind_cols(coverage, out[[2]])
-  plot_metab(preds, main = paste(site, year))
   
   out <- fill_summarize_met(preds)
   cum <- out[[1]] %>%
@@ -97,6 +372,25 @@ for(file in filelist) {
   preds <- preds %>%
     mutate(site = site,
            method = method)
+  
+  bad <- unique(preds$date[is.na(preds$GPP) & is.na(preds$ER)])
+  dat <- fit@data %>%
+    filter(!(date %in% bad))
+  plot_zoom(dat)
+  mcmc <- get_mcmc(fit)
+  rstan::traceplot(mcmc, pars = c("K600_daily[111]",
+                                  "K600_daily[112]",
+                                  "K600_daily[113]",
+                                  "K600_daily[114]",
+                                  "K600_daily[115]",
+                                  "K600_daily[116]",
+                                  "K600_daily[117]",
+                                  "K600_daily[118]",
+                                  "K600_daily[119]",
+                                  "K600_daily[120]"), nrow = 5)
+  # plot_metab(preds, main = paste(site, year))
+  plot_diagnostics(fit, preds, paste(site, year, method),
+                   ylim = c(-15, 7), lim = 7)
   met_sum <- bind_cols(coverage, out[[2]])
   
   met_summary <- bind_rows(met_summary, met_sum)
@@ -104,20 +398,205 @@ for(file in filelist) {
   all_filled_preds <- bind_rows(all_filled_preds, cum)
   
 }
+dev.off()
 
+
+ch_un <- all_preds %>%
+  as_tibble() %>%
+  filter(method == "uninformed_churchillK", 
+         !(site %in% c("wbp", "pwc")))
+ch_fx <- all_preds %>%
+  as_tibble() %>%
+  filter(method == "fixed_churchillK", 
+         !(site %in% c("wbp", "pwc")))
+
+write_csv(all_preds, "metabolism/compiled/churchill_fixed_k_met.csv")
+write_csv(all_filled_preds, "metabolism/compiled/churchill_fixed_k_filled_met.csv")
+write_csv(met_summary, "metabolism/compiled/churchill_fixed_summary.csv")
+write_csv(all_preds, "metabolism/compiled/churchill_k_met.csv")
+write_csv(all_filled_preds, "metabolism/compiled/churchill_k_filled_met.csv")
+write_csv(met_summary, "metabolism/compiled/churchill_summary.csv")
 
 # #inspect fits ####
-sites <- c("nhc2017", "nhc2018", "nhc2019",
-           "unhc2017", "unhc2018", "unhc2019",
-           "pm", "cbp", "wb", "wbp")
-source("../src/streamMetabolizer/inspect_model_fits.r")
+filelist <- list.files("metabolism/modeled/churchill_fixed")
 
-pdf("../figures/nhc_met_models_hall_v2.pdf", width = 9, height = 6)
-  for(site in sites){
-    fit <- readRDS(paste0("metabolism/modeled/fit_", site, "_fixed_hallK.rds"))
+pdf("../figures/model_diagnostics_fixed_churchill.pdf", width = 9, height = 6)
+  for(file in filelist) {
+    fit <- readRDS(paste0("metabolism/modeled/churchill_fixed/", file))
+    site <- str_match(string = file, pattern = '^[a-z]+_([a-z]+)')[2]
+    
     plot_diagnostics(fit, site, ylim = c(-15, 7), lim = 7)
   }
 dev.off()
+ss_met <- all_preds %>% 
+  mutate(doy = format(date, "%j")) %>%
+  group_by(doy) %>%
+  summarize(GPP.upper = quantile(GPP, .975, na.rm = T),
+            GPP.lower = quantile(GPP, .025, na.rm = T),
+            ER.upper = quantile(ER, .975, na.rm = T), 
+            ER.lower = quantile(ER, .025, na.rm = T),
+            GPP = median(GPP, na.rm = T),
+              ER = median(ER, na.rm = T))
+
+png("../figures/hall_met_comparison_nightreg.png", height = 6, width = 7, 
+    units = "in", res = 300)
+  m <- matrix(c(1,2,1,2,1, 
+                2,1,3,1,3), nrow = 2)
+  layout(m)
+  plot_hall_metab(ss_met, ylim = c(-15,10), doy = T)
+  plot_kde_hall_metab(ss_met, lim = 5)
+  plot_k(all_preds)
+  mtext("night regression", outer = T, line = -3, cex = 1.2)
+dev.off()
+
+
+# Convert to Carbon ####
+range(ch_un$GPP *14/32, na.rm = T)
+mean(ch_un$GPP *14/32, na.rm = T)
+range(ch_un$ER *14/32, na.rm = T)
+mean(ch_un$ER *14/32, na.rm = T)
+range(ch_fx$GPP *14/32, na.rm = T)
+mean(ch_fx$GPP *14/32, na.rm = T)
+range(ch_fx$ER *14/32, na.rm = T)
+mean(ch_fx$ER *14/32, na.rm = T)
+
+met <- read_csv("metabolism/compiled/churchill_summary.csv") %>%
+  mutate(nep = -er_cum + gpp_cum)
+
+met_x <- met %>%
+  filter(method == "fixed_churchillK") %>%
+  select(site, year, n_days = total_days, pctcoverage,
+         gpp_median, gpp_max, er_median, er_max, 
+         gpp_max10d, er_max10d, gpp_cum, er_cum, nep) %>%
+  mutate(across(all_of(c("gpp_median", "er_median",
+                         "gpp_max", "er_max",
+                         "gpp_cum", "er_cum", "nep")), ~.*14/32))
+met_u <- met %>%
+  filter(method == "uninformed_churchillK")%>%
+  select(site, year, n_days = total_days, pctcoverage,
+         gpp_median, gpp_max, er_median, er_max, 
+         gpp_max10d, er_max10d, gpp_cum, er_cum, nep) %>%
+  mutate(across(all_of(c("gpp_median", "er_median",
+                         "gpp_max", "er_max",
+                         "gpp_cum", "er_cum", "nep")), ~.*14/32))
+
+range(met_x$nep, na.rm = T)
+range(met_u$nep * 14/32, na.rm = T)
+range(met_x$er_cum * 14/32/1000, na.rm = T)
+write_csv(met_x, "metabolism/compiled/fixedKmet_table.csv")
+write_csv(met_u, "metabolism/compiled/freeKmet_table.csv")
+
+
+
+# Compile Hall Data ####
+hall <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_table_15.csv")  %>%
+  mutate(date = as.Date(date, format = "%m/%d/%Y")) %>%
+  group_by(site, date) %>%
+  summarize(gpp_gcm2d = mean(GPP_gO2m2d, na.rm = T) * 14 / 32,
+            er_gcm2d = mean(ER_gO2m2d, na.rm = T) * 14 / 32) %>%
+  ungroup()
+hall <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_table_15.csv")  %>%
+  mutate(doy = as.numeric(format(as.Date(date, format = "%m/%d/%Y"), "%j"))) %>%
+  group_by(doy) %>%
+  summarize(gpp_gcm2d = mean(GPP_gO2m2d, na.rm = T) * 14 / 32,
+            er_gcm2d = mean(ER_gO2m2d, na.rm = T) * 14 / 32) %>%
+  ungroup()
+n <- nrow(hall)
+hallf <- data.frame(doy = 366,
+                   gpp_gcm2d = 0.258,
+                   er_gcm2d = 0.394) %>%
+  bind_rows(hall)
+
+hallf <- data.frame(doy = seq(1:366)) %>%
+  full_join(hallf) %>%
+  arrange(doy) %>%
+  mutate(across(-doy, na.approx, na.rm = F)) %>%
+  filter(doy != 366)  
+ncon <- sum(hall$site =="Concrete")
+nblk <- sum(hall$site =="Blackwood")
+nwb <- sum(hall$site =="Wood Bridge")
+
+dd <- as.Date("1968-04-14")
+h68 <- hall %>%
+  filter(date >= dd,
+         date < dd + 365,
+         site == "Concrete")
+h69 <- hall %>%
+  filter(date >= dd+ 365,
+         date < dd + 2*365,
+         site == "Concrete")
+h_all <- hall %>%
+  mutate(doy = format(date, "%j")) %>%
+  group_by(doy) %>%
+  summarize(gpp_gcm2d = mean(gpp_gcm2d, na.rm = T),
+            er_gcm2d = mean(er_gcm2d, na.rm = T))
+rd <- range(hall$date[hall$site =="Wood Bridge"])
+dates <- data.frame(date = seq(rd[1], rd[2], by = "day"))
+nrow(dates)
+h_con <- hall %>%
+  filter(site == "Concrete") %>%
+  select(-site) %>%
+  full_join(dates) %>%
+  arrange(date) %>%
+  mutate(across(-date, na.approx, na.rm = F))
+
+h_c <- hall %>%
+  filter(site == "Concrete") 
+ 
+h_wb <- hall %>%
+  filter(site == "Wood Bridge") %>%
+  mutate(doy = format(date, "%j")) %>%
+  group_by(doy) %>%
+  summarize(gpp_gcm2d = mean(gpp_gcm2d, na.rm = T),
+            er_gcm2d = mean(er_gcm2d, na.rm = T))
+
+h68 <- h_con %>%
+  filter(date >= dd ,
+         date < dd + 365)
+h68 <- h_con %>%
+  filter(date >= dd +365,
+         date < dd + 365*2)
+
+h68 <- hall                    
+met <- h68 %>%
+    summarize(gpp_mean = mean(gpp_gcm2d, na.rm = T),
+              gpp_median = median(gpp_gcm2d, na.rm = T),
+              gpp_max = max(gpp_gcm2d, na.rm = T),
+              er_mean = -mean(er_gcm2d, na.rm = T),
+              er_median = -median(er_gcm2d, na.rm = T),
+              er_max = -max(er_gcm2d, na.rm = T))
+met$site = "all"
+met$year = NA_real_
+  
+cum <- h68 %>%
+ # select(-site) %>%
+ # mutate(across(-date, na.approx, na.rm = F)) %>%
+ mutate(across(-doy, cumsum, .names = "{col}_cum")) 
+
+n <- nrow(cum)
+l = (n-9)
+weekly <- tibble(date = cum$date[1:l],
+                 GPP_week = rep(NA_real_, l),
+                 ER_week = rep(NA_real_, l))
+for(i in 1:l){
+  weekly$GPP_week[i] <- sum(cum$gpp_gcm2d[i:(i+9)]) 
+  weekly$ER_week[i] <- sum(cum$er_gcm2d[i:(i+9)]) 
+}
+met$gpp_max10d <- weekly$date[which.max(weekly$GPP_week)]
+met$er_max10d <- weekly$date[which.max(weekly$ER_week)]
+met$gpp_cum <- cum$gpp_gcm2d_cum[n]*365/(n)
+met$er_cum <- cum$er_gcm2d_cum[n]*365/(n)
+met$daterange <- as.character(paste(cum$date[1], "-", cum$date[nrow(cum)]))
+met$pctcoverage <- nrow(h68)/n
+
+ # met_hall <- data.frame()
+met_hall <- bind_rows(met_hall, met)
+
+####
+
+sites <- c("nhc2017", "nhc2018", "nhc2019",
+           "unhc2017", "unhc2018", "unhc2019",
+           "pm", "cbp", "wb", "wbp")
 
 # compile met data
 all_met <- data.frame()
@@ -147,24 +626,6 @@ all_met <- all_met %>%
 
 write_csv(all_met, 
           "C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/code/data/NHC_metab_allsites_fixedHallK_v2.csv")
-ss_met <- all_met %>% 
-  mutate(doy = format(date, "%j")) %>%
-  group_by(doy) %>%
-  summarize(GPP.upper = quantile(GPP, .975, na.rm = T),
-            GPP.lower = quantile(GPP, .025, na.rm = T),
-            ER.upper = quantile(ER, .975, na.rm = T), 
-            ER.lower = quantile(ER, .025, na.rm = T),
-            GPP = median(GPP, na.rm = T),
-            ER = median(ER, na.rm = T))
-
-png("../figures/hall_met_comparison_hallK_v2.png", height = 4, width = 7.5, 
-    units = "in", res = 300)
-  m <- matrix(c(1,1,1,2,2), nrow = 1)
-  layout(m)
-  plot_hall_metab(ss_met, ylim = c(-15,10), doy = T)
-  plot_kde_hall_metab(ss_met)
-  mtext("All sites metabolism", outer = T, line = -3, cex = 1.2)
-dev.off()
 
 hall_met <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/code/data/NHC_metab_allsites_fixedHallK_v2.csv")
      
