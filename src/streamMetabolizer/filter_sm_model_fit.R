@@ -58,8 +58,8 @@ flow_dates <- nhcQ %>%
   select(date, nhc_q, deltaQ, good_flow) %>%
   filter(!is.na(good_flow))
 
-write_csv(flow_dates, "rating_curves/flow_dates_filter.csv")
-plot_zoom(fit@data)#, colnames(fit@data)[-c(1,2,7,8)])
+# write_csv(flow_dates, "rating_curves/flow_dates_filter.csv")
+# plot_zoom(fit@data)#, colnames(fit@data)[-c(1,2,7,8)])
 
 
 
@@ -321,7 +321,7 @@ plot_zoom(fit@data)#, colnames(fit@data)[-c(1,2,7,8)])
 # saveRDS(fit, paste0("metabolism/modeled/raymond/", filelist[5]))
 
 # Compile model outputs ####
-filelist <- list.files("metabolism/modeled/churchill_fixed/")
+filelist <- list.files("metabolism/modeled/raymond")
 GPP_min = 0
 ER_max = 0
 
@@ -329,22 +329,24 @@ met_summary <- data.frame()
 all_preds <- data.frame()
 all_filled_preds <- data.frame()
 
-file <- filelist[1]
+file <- filelist[12]
 
- pdf("../figures/model_diagnostics_nightreg.pdf", width = 9, height = 6)
+ pdf("../figures/model_diagnostics_raymond.pdf", width = 9, height = 6)
 
 for(file in filelist) {
+  # uninformed raymond ests
+  fit <- readRDS(paste0("metabolism/modeled/raymond/", file))
   # uninformed churchill ests
   # fit <- readRDS(paste0("metabolism/modeled/nreg/", file))
   # tmp <- str_match(string = file, 
   #                  pattern = '^([a-z]+)([0-9]+)?_([a-z]+_[a-z0-9]+)')
   # fit <- readRDS(paste0("metabolism/modeled/churchill_uninformed/", file))
   # fixed churchill ests
-  fit <- readRDS(paste0("metabolism/modeled/churchill_fixed/", file))
+  # fit <- readRDS(paste0("metabolism/modeled/churchill_fixed/", file))
   # churchill ests
   # fit <- readRDS(paste0("metabolism/modeled/churchill/", file))
   tmp <- str_match(string = file,
-                   pattern = '^[a-z]+_([a-z]+)_?([0-9]+)?_([a-z]+_[a-zA-Z]+)')
+                   pattern = '^[a-z]+_([a-z]+)_?([0-9]+)?_([a-z]+_[a-z]+)')
   # nightreg
   # fit <- readRDS(paste0("metabolism/modeled/nreg/", file))
   # tmp <- str_match(string = file, pattern = '^([a-z]+)([0-9]+)?_([a-z]+)')
@@ -356,6 +358,10 @@ for(file in filelist) {
     year = as.numeric(tmp[3])
   } else { 
     year = 2019 
+  }
+  if(site == "wbp"){
+    fit@data <- fit@data %>% filter(date <= as.Date("2020-03-20"))
+    fit@fit$daily <- fit@fit$daily %>% filter(date <= as.Date("2020-03-20"))
   }
   
   out <- filter_model(fit, flow_dates)
@@ -377,17 +383,17 @@ for(file in filelist) {
   dat <- fit@data %>%
     filter(!(date %in% bad))
   plot_zoom(dat)
-  mcmc <- get_mcmc(fit)
-  rstan::traceplot(mcmc, pars = c("K600_daily[111]",
-                                  "K600_daily[112]",
-                                  "K600_daily[113]",
-                                  "K600_daily[114]",
-                                  "K600_daily[115]",
-                                  "K600_daily[116]",
-                                  "K600_daily[117]",
-                                  "K600_daily[118]",
-                                  "K600_daily[119]",
-                                  "K600_daily[120]"), nrow = 5)
+  # mcmc <- get_mcmc(fit)
+  # rstan::traceplot(mcmc, pars = c("K600_daily[211]",
+  #                                 "K600_daily[212]",
+  #                                 "K600_daily[213]",
+  #                                 "K600_daily[214]",
+  #                                 "K600_daily[215]",
+  #                                 "K600_daily[216]",
+  #                                 "K600_daily[217]",
+  #                                 "K600_daily[218]",
+  #                                 "K600_daily[219]",
+  #                                 "K600_daily[220]"), nrow = 5)
   # plot_metab(preds, main = paste(site, year))
   plot_diagnostics(fit, preds, paste(site, year, method),
                    ylim = c(-15, 7), lim = 7)

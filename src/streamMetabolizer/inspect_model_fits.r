@@ -25,14 +25,14 @@ filter_model <- function(fit, flow_dates, GPP_min = 0, ER_max = 0){
     left_join(q) %>%
     mutate(badGPP = case_when(good_flow == FALSE ~ 1,
                               GPP.upper < GPP_min ~ 1,
-                              # GPP_Rhat > 1.05 ~ 1,
-                              # K600_Rhat > 1.05 ~ 1,
+                              GPP_Rhat > 1.05 ~ 1,
+                              K600_Rhat > 1.05 ~ 1,
                               is.na(GPP) ~ 1,
                               TRUE ~ 0),
            badER = case_when(good_flow == FALSE ~ 1,
                              ER.lower > ER_max ~ 1,
-                             # ER_Rhat > 1.05 ~ 1,
-                             # K600_Rhat > 1.05 ~ 1,
+                             ER_Rhat > 1.05 ~ 1,
+                             K600_Rhat > 1.05 ~ 1,
                              is.na(ER) ~ 1,
                              TRUE ~ 0))
   
