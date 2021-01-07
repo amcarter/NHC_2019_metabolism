@@ -23,20 +23,21 @@ nightreg<-function(o2file, date){
   #get Q
   Q <- mean(o2file[o2file$date==date, ]$discharge, na.rm=T)
   #find sunset:
-  o2fil <- o2file[o2file$datetime>= ymd_hms(paste(date,"15:00:00")) & o2file$datetime<=ymd_hms(paste(date+1,"12:00:00")),]
-  sunset<- o2fil$datetime[which(o2fil$light==0)[1]]
+  o2fil <- o2file[o2file$datetime >= ymd_hms(paste(date,"15:00:00")) & 
+                    o2file$datetime<=ymd_hms(paste(date+1,"12:00:00")),]
+  sunset <- o2fil$datetime[which(o2fil$light==0)[1]]
   o2fil <- o2fil[o2fil$datetime>=sunset,]  
   equil <- o2fil$datetime[which.min(o2fil$DO_mgL)[1]]
   o2fil <- o2fil[o2fil$datetime<=equil,]  
   
   
-  temp<-o2fil$temp
-  oxy<-o2fil$DO_mgL
+  temp <- o2fil$temp
+  oxy <- o2fil$DO_mgL
   oxsat <- o2fil$DO_sat
   
   ##moving average on oxy data
-  oxyf1<-stats::filter(oxy,rep(1/3,3), sides=2)
-  satf1<-stats::filter(oxsat,rep(1/3,3), sides=2)
+  oxyf1 <- stats::filter(oxy,rep(1/3,3), sides=2)
+  satf1 <- stats::filter(oxsat,rep(1/3,3), sides=2)
   
   #trim the ends of the oxy data
   oxyf2<- oxyf1[c(-1,-length(oxyf1))]

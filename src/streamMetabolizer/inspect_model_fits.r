@@ -277,15 +277,17 @@ K600toO2<-function(temp, K600) {
 
 plot_k <- function(preds, xlim = NULL){
   hall <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_tableA2_k_morphology.csv") 
-  k <- K600toO2(preds$temp.water,preds$K600)
+  k <- K600toO2(preds$temp.water,preds$K600)/24
   if(is.null(xlim)){
-    xlim <- range(c(k, hall$k2_d), na.rm = T)
+    xlim <- range(c(k, hall$k_gm3hr), na.rm = T)
   } else {xlim = c(0, xlim)}
   plot(density(k, na.rm = T), xlab = "K_O2 (day-1)", 
        main = "K values", lwd = 2,  xlim = c(xlim[1]-1, xlim[2]+1))
   par(new = T)
-  plot(density(hall$k2_d, na.rm = T), xlab = "",xaxt = "n", yaxt = "n", 
+  plot(density(hall$k_gm3hr, na.rm = T), xlab = "",xaxt = "n", yaxt = "n", 
        main = "", lwd = 2,col = "brown3", xlim = c(xlim[1]-1, xlim[2]+1))
+  legend("topright",cex = .7,bty = "n",
+         c("now","hall"), col = c(1, "brown3"))
 }
 
 plot_kde_metab <- function(met, lim = NULL, col = "grey25"){

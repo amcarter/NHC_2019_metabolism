@@ -331,7 +331,7 @@ all_filled_preds <- data.frame()
 
 file <- filelist[12]
 
- pdf("../figures/model_diagnostics_raymond.pdf", width = 9, height = 6)
+ # pdf("../figures/model_diagnostics_raymond.pdf", width = 9, height = 6)
 
 for(file in filelist) {
   # uninformed raymond ests
@@ -379,10 +379,10 @@ for(file in filelist) {
     mutate(site = site,
            method = method)
   
-  bad <- unique(preds$date[is.na(preds$GPP) & is.na(preds$ER)])
-  dat <- fit@data %>%
-    filter(!(date %in% bad))
-  plot_zoom(dat)
+  # bad <- unique(preds$date[is.na(preds$GPP) & is.na(preds$ER)])
+  # dat <- fit@data %>%
+  #   filter(!(date %in% bad))
+  # plot_zoom(dat)
   # mcmc <- get_mcmc(fit)
   # rstan::traceplot(mcmc, pars = c("K600_daily[211]",
   #                                 "K600_daily[212]",
@@ -395,8 +395,8 @@ for(file in filelist) {
   #                                 "K600_daily[219]",
   #                                 "K600_daily[220]"), nrow = 5)
   # plot_metab(preds, main = paste(site, year))
-  plot_diagnostics(fit, preds, paste(site, year, method),
-                   ylim = c(-15, 7), lim = 7)
+  # plot_diagnostics(fit, preds, paste(site, year, method),
+  #                  ylim = c(-15, 7), lim = 7)
   met_sum <- bind_cols(coverage, out[[2]])
   
   met_summary <- bind_rows(met_summary, met_sum)
@@ -404,8 +404,12 @@ for(file in filelist) {
   all_filled_preds <- bind_rows(all_filled_preds, cum)
   
 }
-dev.off()
+# dev.off()
 
+saveRDS(list(preds = all_preds, 
+             summary = met_summary, 
+             cumulative = all_filled_preds),
+        "metabolism/compiled/raymond_met.rds")
 
 ch_un <- all_preds %>%
   as_tibble() %>%
@@ -450,7 +454,7 @@ png("../figures/hall_met_comparison_nightreg.png", height = 6, width = 7,
                 2,1,3,1,3), nrow = 2)
   layout(m)
   plot_hall_metab(ss_met, ylim = c(-15,10), doy = T)
-  plot_kde_hall_metab(ss_met, lim = 5)
+  plot_kde_hall_metab(ss_met, lim = 10)
   plot_k(all_preds)
   mtext("night regression", outer = T, line = -3, cex = 1.2)
 dev.off()
