@@ -1,0 +1,77 @@
+NHC greenhouse gas paper to do:
+
+#### Writing
+ - flesh out introduction
+
+#### Data Prep
+ - compile all manual cross section flow measurements from NHC
+ - Find if there were cation measurements from the first half of sampling
+ - Compile all ghg atmospheric measurements ever taken
+
+Gas buckets
+ - organize gas samples data from bucket deployments (July 2018, Mar 2019)
+ - locate bucket volume calculations
+ - locate temperature logger data
+
+Diel gas sampling:
+ - locate diel gas data from NHC in 2017
+ - locate diel gas data from bucket deployments
+
+
+#### Calculations
+Discharge and Metabolism
+ - Fix discharge at NHC site
+   - Recalculate Q interpolation, 
+     - Recalculate metabolism with SM
+     - Extend metabolism estimates at NHC and UNHC to the end of March 2020
+
+Gas Flux
+ - Calculate gas flux from buckets
+ - compare 24hr flux to bucket sampling every 3 hrs
+
+Mass Balance
+ - Calculate expected GW gas inputs between each pair of sites
+   - compare to GW water inputs
+   - Compare deviations from this relationship to concavity and anaerobic metrics
+ - calculate DOC uptake
+   - compare to aerobic respiration/CO2 instream production
+   - compare deviations from this to anaerobic metrics.
+ - Calculate WRT in each reach at each time point
+   - compare to metabolism estimates
+   - compare to excess CO2 production and anaerobic metrics
+
+Continuous CO2
+   - compare CO2:O2 slope to Q, temperature, anaerobic metrics. 
+
+Scaling
+ - scale flux estimates to the whole reach
+ - do MCMC uncertainty analysis for each of these things
+
+#### Plots 								Done
+									- regression with drivers
+								 	- concentration ranges and fluxes over space and time
+   									- boxplot of conc x site, lineplot of flux x site
+
+ 									- CO2 vs O2
+			  					 	- color by Q, T
+   									- bin by Q, T
+								   	- plot for grab samples at sites
+ - Excess CO2: GW
+   - residuals: concavity, anaerobic mets
+
+ - delta DOC x respiration
+   - residuals: conc, anaerobic mets
+
+ - WRT:Met, WRT:anaerobic mets
+   - site specific slopes vs reach concavity.
+
+
+Done
+ - download NHC CO2 and O2 sensor data, make a data frame with temp, Q and spC
+ - get "anaerobic metrics" from drought paper gomez gener
+ - Calculate CO2 and O2 sat for each tp
+   - calculate slope of excess concentrations
+   - is more excess CO2 associated with higher or lower water residence times?
+Regression
+ - Concentrations and Fluxes versus drivers. Make summary tables of regression outputs
+

@@ -3,6 +3,7 @@
 
 library(tidyverse)
 library(lubridate)
+library(zoo)
 
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism")
 
@@ -91,6 +92,16 @@ dat <- ghg %>%
   left_join(raw_dat, by = c("datetime", "site")) %>%
   select(-error_pct, -DateTime_UTC)
 
+# compile water chemistry ####
+chem <- nuts %>%
+  filter(site != "MC751") %>%
+  # left_join(ysi, by = c("date", "site")) %>%
+  left_join(site_dat, by = "site") %>%
+  left_join(met, by = c("date", "site")) %>%
+  left_join(raw_daily, by = c("date", "site")) %>%
+  select(-width_march_m, -ws_area_km2, -habitat, -pH)
+    
+apply(chem, 2, function(x) sum(is.na(x)))/nrow(chem)
 # compare ysi data:
 ysicomp <- dat %>% 
   select(watertemp_C.ysi, watertemp_C, airpres_mmHg.ysi, AirPres_kPa, 
@@ -122,7 +133,8 @@ dat <- dat %>%
          N2O.flux_ugld = (N2O.ugL - N2O.sat) * K_N2O)
 
 # still need to get average depth and width upstream
-write_csv(dat, "data/gas_data/compiled_ghg_dataframe_allvariables.csv")
+# write_csv(dat, "data/gas_data/compiled_ghg_dataframe_allvariables.csv")
+dat <- read_csv("data/gas_data/compiled_ghg_dataframe_allvariables.csv")
 
 # pare down to have fewer NA's
 apply(dat, 2, function(x) sum(is.na(x)))/nrow(dat)
@@ -136,11 +148,4 @@ d2 <- dat %>%
          -distance_upstream_m, -width_march_m, -ws_area_km2, -slope_nhd) 
 
 apply(d2, 2, function(x) sum(is.na(x)))
-write_csv(d2, "data/gas_data/compiled_ghg_dataframe_short.csv")
-# plots ####
-dat %>%
-  select(datetime, CH4.ugL, CO2.ugL, N2O.ugL, SO4_mgL, NO3N_mgL, 
-          GPP, ER, discharge_m3s, DO.obs) %>%
-  filter(!is.na(datetime)) %>%
-  pairs()
-
+# write_csv(d2, "data/gas_data/compiled_ghg_dataframe_short.csv")
