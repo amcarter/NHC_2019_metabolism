@@ -1,88 +1,164 @@
 # Plot summarized metabolism data for Hall comparison
+dat <- read_csv("NHC_2019_metabolism/data/metabolism/compiled/metabolism_summary_table_gC.csv") %>%
+  filter(method == 'uninformed_raymond'| site== "CBP" & is.na(year)) %>%
+  mutate(year = ifelse(method == 'uninformed_raymond', year, 1969)) %>%
+  select(-c(3:11))
 
-library(tidyverse)
-library(lubridate)
-library(ggplot2)
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data")
+# seasonal distribution of peak metabolism ####
 
-dat <- read_csv("metabolism/compiled/raymond_summary.csv")
-dat <- read_csv("metabolism/compiled/metabolism_summary_tables_v2.csv") %>%
-  mutate(method = factor(method, levels = c("hall", "hall_now", "raymond")))
+sum <- dat %>% filter(year != 1969, year != 2020, site != 'PWC') %>%
+  mutate(across(starts_with('peak'), ~as.numeric(format(., '%j'))+4, 
+                .names = '{col}_doy'))
 
-# remove duplicate hall buisiness
-ldat <- dat[c(-21, -22,-25),] %>%
-  select(-data_days, -days, -pct_cov, -gpp_peak, -er_peak, -nep_cum_gC) %>%
-  mutate(across(starts_with("er"),~ -.)) %>%
-  pivot_longer(cols = c(-site, -year, -method),
-               names_to = "variable",
-               values_to = "gC_m2_time")
+png('figures/distribution_peak_gpp_er.png', height = 4, width = 5, res = 300, 
+    units = 'in', family = 'cairo')
+  plot(density(sum$peak_gpp_doy, na.rm = T), xlim = c(0, 365), 
+       col = 'forestgreen', lwd = 2, xaxt = 'n', xlab = 'Date',
+       main = 'Distribution of peak ER and GPP (n = 10)')
+  lines(density(sum$peak_er_doy), col = 'sienna', lwd = 2)
+  axis(1, at = as.numeric(format(seq(as.Date('2019-01-01'), length.out = 12, 
+                                    by = 'month'), '%j')), labels = month.abb)
+  polygon(c(62, 71, 71, 62), c(0,0,0.025,0.025), col = alpha('sienna', .4),
+          border = NA)
+  polygon(c(68, 77, 77, 68), c(0,0,0.025,0.025), 
+          col = alpha('forestgreen', .5), border = NA)
+  legend('topright', c('GPP 2017-19', 'ER 2017-19', 'GPP 1969', 'ER 1969'), 
+         col = c('forestgreen', 'sienna', NA, NA),
+         fill = c(NA, NA, alpha('forestgreen', .5), alpha('sienna', .4)), 
+         lwd = 2, lty = c(1,1,NA, NA), border = NA, bty = 'n',
+         x.intersp = c(1,1,0, 0), seg.len = 1.2, inset = .02)
+dev.off()
+
+sum %>%
+  summarize(across(ends_with('cum'), ~sd(.)/mean(.)))
+# add geomorphic variables: ####
+geo <- read_csv("NHC_2019_metabolism/data/reach_characterization/nhc_habitat_dimensions_by_reach.csv") %>%
+  filter(habitat == "total") %>%
+  select(-habitat, -total_length_m)
+geo <- sites %>%
+  select(site = sitecode, width_mar_m, habitat, slope, distance_m) %>%
+  left_join(geo, by = c('site', 'distance_m')) %>%
+  right_join(dat) 
+
+geosum <- geo %>% 
+  select(site, width_mar_m, avg_depth_mar, slope, distance_m) %>%
+  group_by(site) %>%
+  summarize_all(mean, na.rm = T)
+
+summary(geosum)
+met_dat <- geo %>%
+  select(-starts_with("peak"), -days, -pctcoverage, -daterange, -era) %>%
+  pivot_longer(cols = starts_with(c('gpp', 'er')),
+               names_to = c('met', "variable"),
+               values_to = "value",
+               names_sep = '_')  %>%
+  filter(year != 1969, year!= 2020, site != 'PWC',
+         variable != "min")
+  # mutate(gC_m2_time = ifelse(met == 'er', -gC_m2_time, gC_m2_time))
+# met_dat %>%
+#   filter(year == 2019) %>%
+# ggplot( aes(slope, value, col = met)) +
+#   # geom_bar(stat = 'identity', position = 'dodge') +
+#   geom_line() +
+#   facet_wrap(.~variable, scales = 'free_y')
+
+png('figures/drivers_annual_met_by_width_depth_slope.png', width = 5, height = 4,
+    res = 300, units = 'in')
+  met_dat %>%
+    filter(year == 2019,
+           variable %in% c('cum', 'median')) %>%
+    pivot_longer(cols = any_of(c('avg_width', 'avg_depth_mar', 'slope')), 
+                 names_to = 'geo_measure', 
+                 values_to = 'geo_value') %>%
+  ggplot( aes(geo_value, value, color = met)) +
+    geom_point() +
+    geom_smooth(method = lm) +
+    facet_grid(variable~geo_measure, scales = 'free')+
+    xlab('meters') +
+    ylab('gC/m2/time')
+dev.off()
+
+# summarize model fits: ####
+ss <- met_dat %>%
+  filter(year == 2019,
+         variable == "mean") %>%
+  pivot_wider(names_from = met, values_from = value)
+
+summary(lm(gpp~slope, data = ss))
+summary(lm(er~slope, data = ss))
+summary(lm(gpp~avg_width, data = ss))
+summary(lm(er~avg_width, data = ss))
+summary(lm(gpp~avg_depth_mar, data = ss))
+summary(lm(er~avg_depth_mar, data = ss))
+summary(lm(gpp~avg_depth_oct, data = ss))
+summary(lm(er~avg_depth_oct, data = ss))
+
+
+# met_dat %>%
+#   filter(site %in% c('NHC', 'UNHC')) %>%
+# ggplot( aes(site, value, fill = factor(year))) +
+#   geom_bar(stat = 'identity', position = 'dodge') +
+#   facet_wrap(.~variable, scales = 'free_y')
+
+slist <- sites$sitecode[2:6]
+gpp_mean = ss$gpp_mean[ss$site == 'NHC']
+er_mean = ss$er_mean[ss$site == 'NHC']
+pd <- data.frame()
+for(s in slist){
+  gpp = abs((ss$gpp_mean[ss$site == s] - gpp_mean)/
+              (ss$gpp_mean[ss$site == s] + gpp_mean))
+  er = abs((ss$er_mean[ss$site == s] - er_mean)/
+              (ss$er_mean[ss$site == s] + er_mean))
+  pd = bind_rows(pd, data.frame(gpp = gpp, er = er))
+}
+
+all_pd <- pd %>% 
+  summarize_all(.funs = list(mean = ~mean(.*2), 
+                             sd = ~sd(.*2))) %>%
+  mutate(scale = "sites")
+nhc = filter(yy, site == "NHC")
+unhc = filter(yy, site == "UNHC")
+pd <- data.frame()
+for(y in 2018:2019){
+  gpp_mean = nhc$gpp_mean[nhc$year == 2017]
+  gpp = abs((nhc$gpp_mean[nhc$year == y] - gpp_mean)/
+              (nhc$gpp_mean[nhc$year == y] + gpp_mean))
+  er_mean = nhc$er_mean[nhc$year == 2017]
+  er = abs((nhc$er_mean[nhc$year == y] - er_mean)/
+              (nhc$er_mean[nhc$year == y] + er_mean))
+  pd = bind_rows(pd, data.frame(gpp = gpp, er = er))
   
-               
-labs = c("median GPP daily", "max GPP daily", "median ER daily",
-          "max ER daily",  "GPP cumulative annual", "ER cumulative annual")
-                                             
-names(labs) <- ldat$variable[1:6, drop = T]
+  gpp_mean = unhc$gpp_mean[unhc$year == 2017]
+  gpp = abs((unhc$gpp_mean[unhc$year == y] - gpp_mean)/
+              (unhc$gpp_mean[unhc$year == y] + gpp_mean))
+  er_mean = unhc$er_mean[unhc$year == 2017]
+  er = abs((unhc$er_mean[unhc$year == y] - er_mean)/
+              (unhc$er_mean[unhc$year == y] + er_mean))
+  pd = bind_rows(pd, data.frame(gpp = gpp, er = er))
+}
 
-png("../figures/metabolism_summary_comparison.png", 
-    width = 6, height = 4, res = 300, units = "in")
-ggplot(ldat, aes(x = method, y = gC_m2_time, fill = method)) +
-  geom_boxplot() +
-  facet_wrap(~ variable, scales = "free_y",
-             labeller = labeller(variable = labs))+
-  ggtitle("Metabolism summarized by site years")
+all_pd <- dd %>% 
+  summarize(gpp_mean = abs(diff(gpp_mean)/sum(gpp_mean))*2,
+            er_mean = abs(diff(er_mean)/sum(er_mean))*2) %>%
+  mutate(scale = "decades") %>%
+  bind_rows(all_pd)
+all_pd <- pd %>% 
+  summarize_all(.funs = list(mean = ~mean(.*2), 
+                             sd = ~sd(.*2))) %>%
+  mutate(scale = "years") %>%
+  bind_rows(all_pd)
 
+png('figures/percent_difference_in_cumulative_met_across_scales.png', 
+    width = 5, height = 4, units = 'in', res = 300)
+all_pd %>% 
+  pivot_longer(cols = -scale, names_to = c('met', 'meas'),
+               names_pattern = '([a-z]+)_([a-z]+)',
+               values_to = 'percent_difference') %>%
+  pivot_wider(names_from = meas, values_from = percent_difference) %>%
+ggplot(aes(scale, mean, fill = met)) +
+  geom_bar(stat = 'identity', position = 'dodge') +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), 
+             stat = 'identity', position = position_dodge(.9), width = .2) +
+  ylab("percent difference between site years")
 dev.off()
-
-
-
-lldat <- filter(ldat, method =="hall_now") %>%
-  mutate(siteyear = paste0(site, year)) 
-ggplot(lldat, aes(x = site, y = gC_m2_time, fill = factor(year))) +
-  geom_bar(stat = "identity", position = "dodge") +
-  facet_grid(variable ~., scales = "free_y")
-
-rdat <- filter(dat, method == "raymond")
-
-png("../figures/interannual_vs_intersite_met_distribution_pdfs.png",
-    width = 6, height = 5, units = "in", res = 300)
-par(mfrow = c(2,2), mar = c(4,4,2,2))
-plot(density(rdat$gpp_median_gC), xlab = "median GPP", main = "")
-abline(v = rdat$gpp_median_gC[rdat$site == "nhc", drop = T], lwd = 1.5, 
-       col = "steelblue")
-abline(v = rdat$gpp_median_gC[rdat$site == "unhc", drop = T], lwd = 1.5, 
-       col = "steelblue", lty = 2)
-abline(v = rdat$gpp_median_gC[rdat$year == 2019, drop = T]+0.004, 
-       lwd = 1.5, col = "sienna3")
-plot(density(rdat$er_median_gC), xlab = "median ER", main = "")
-abline(v = rdat$er_median_gC[rdat$site == "nhc", drop = T], lwd = 1.5, 
-       col = "steelblue")
-abline(v = rdat$er_median_gC[rdat$site == "unhc", drop = T], 
-       lwd = 1.5, col = "steelblue", lty = 2)
-abline(v = rdat$er_median_gC[rdat$year == 2019, drop = T]+0.015, 
-       lwd = 1.5, col = "sienna3")
-plot(density(rdat$gpp_cum_gC), xlab = "cummulative GPP", main = "")
-abline(v = rdat$gpp_cum_gC[rdat$site == "nhc", drop = T], lwd = 1.5, 
-       col = "steelblue")
-abline(v = rdat$gpp_cum_gC[rdat$site == "unhc", drop = T], lwd = 1.5, 
-       col = "steelblue", lty = 2)
-abline(v = rdat$gpp_cum_gC[rdat$year == 2019, drop = T]+1, 
-       lwd = 1.5, col = "sienna3")
-plot(density(rdat$er_cum_gC), xlab = "cummulative ER", main = "")
-abline(v = rdat$er_cum_gC[rdat$site == "nhc", drop = T], lwd = 1.5, 
-       col = "steelblue")
-abline(v = rdat$er_cum_gC[rdat$site == "unhc", drop = T], 
-       lwd = 1.5, col = "steelblue", lty = 2)
-abline(v = rdat$er_cum_gC[rdat$year == 2019, drop = T]+ 4, 
-       lwd = 1.5, col = "sienna3")
-par(new = T, mfrow = c(1,1), mar = c(0,0,0,0))
-plot(1,1, type = "n")
-legend("top",
-       c("2017-2019 NHC", "2017-2019 UNHC", "2019 all sites"),
-       col = c("steelblue", "steelblue","sienna3"),
-       lty = c(1,2,1), lwd = 1.5, ncol = 3, bty = "n")
-dev.off()
-
-var.test(rdat$gpp_cum_gC[rdat$site =="nhc"], 
-         rdat$gpp_cum_gC[rdat$year == 2019], 
-         alternative = "two.sided")
 

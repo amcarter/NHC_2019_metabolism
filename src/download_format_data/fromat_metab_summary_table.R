@@ -5,107 +5,27 @@ library(tidyverse)
 library(lubridate)
 library(zoo)
 
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism")
-
 # load site and met data ####
-site_dat <- read_csv("data/siteData/NHCsite_metadata.csv") %>%
+site_dat <- read_csv("NHC_2019_metabolism/data/siteData/NHCsite_metadata.csv") %>%
   slice(c(1:5,7)) %>%
   select(site = sitecode, distance_m, width_mar_m, slope)
-site_dat <- read_csv("data/rating_curves/calculated_channel_dimensions_maroct.csv")
+site_dat <- read_csv("NHC_2019_metabolism/data/rating_curves/calculated_channel_dimensions_maroct.csv") %>%
+  right_join(site_dat, by = "distance_m")
 
 O2toC = 12.0107/(2*15.999)
-met <- readRDS("data/metabolism/compiled/raymond_met.rds")
-sum <- met$summary %>%
-  as_tibble() %>%
-  mutate(days = round(total_days * pctcoverage, 0)) %>%
-  select(site, year, days, total_days, pctcoverage, 
-         gpp_mean, gpp_max, peaktime_gpp = gpp_max10d, 
-         er_mean, er_max, peaktime_er = er_max10d,
-         gpp_cum, er_cum) %>%
-  mutate(across(starts_with("er"), ~ - . * O2toC),
-         across(starts_with("gpp"), ~ . * O2toC),
-         nep_cum = gpp_cum + er_cum)
-m <- met$preds %>%
-  as_tibble() %>%
-  select(GPP, ER) %>%
-  summarize(gpp_mean = mean(GPP, na.rm = T),
-            gpp_max = max(GPP, na.rm = T), 
-            er_mean = mean(ER, na.rm = T), 
-            er_max = min(ER, na.rm = T)) %>%
-  mutate(across(.fns = ~ .* O2toC))
+sm_met <- read_csv("NHC_2019_metabolism/data/metabolism/compiled/daily_preds_stream_metabolizer.csv")
+d_met <- read_csv("NHC_2019_metabolism/data/metabolism/compiled/daily_preds_direct_calculation.csv")
+all_sum <- read_csv("NHC_2019_metabolism/data/metabolism/compiled/metabolism_summary_table_2021_01.csv")
 
-m$days <- sum(sum$days)
-m$total_days <- sum(sum$total_days)
-m$site <- "all"
-sum <- bind_rows(sum, m)
-sum$method <- "inverse modeling"
-  
-# compile hall method 2019 ####
-
-hmet <- readRDS("data/metabolism/hall/hall_met_60min.rds")
-hsum <- hmet$summary %>%
-  as_tibble() %>%
-  mutate(days = round(total_days * pctcoverage, 0)) %>%
-  select(site, year, days, total_days, pctcoverage, 
-         gpp_mean, gpp_max, peaktime_gpp = gpp_max10d, 
-         er_mean, er_max, peaktime_er = er_max10d,
-         gpp_cum, er_cum) %>%
-  mutate(across(starts_with("er"), ~ - . * O2toC),
-         across(starts_with("gpp"), ~ . * O2toC),
-         nep_cum = gpp_cum + er_cum)
-
-m <- hmet$preds %>%
-  as_tibble() %>%
-  select(GPP, ER) %>%
-  summarize(gpp_mean = mean(GPP, na.rm = T),
-            gpp_max = max(GPP, na.rm = T), 
-            er_mean = mean(ER, na.rm = T), 
-            er_max = min(ER, na.rm = T)) %>%
-  mutate(across(.fns = ~ .* O2toC))
-
-m$days <- sum(hsum$days)
-m$total_days <- sum(hsum$total_days)
-m$site <- "all"
-
-cum <- hmet$preds %>%
-  as_tibble() %>%
-  group_by(doy = as.numeric(format(date, "%j"))) %>%
-  select(doy, GPP, ER) %>%
-  summarize_all(mean, na.rm = T) %>%
-  ungroup() %>%
-  mutate(across(-doy, ~ . * O2toC)) %>%
-  full_join(data.frame(doy = 1:365)) %>%
-  arrange(doy) %>%
-  mutate(across(-doy, cumsum, .names = "{col}_cum"))
-
-mms <- cum %>%
-  left_join(data.frame(date = seq(as.Date("2019-01-01"), 
-                                  as.Date("2019-12-31"), by = "day"),
-                       doy = 1:365), by = "doy") %>%
-  group_by(month = substr(date, 6, 7)) %>%
-  summarize(er = mean(ER, na.rm = T),
-            gpp = mean(GPP, na.rm = T)) %>%
-  ungroup() 
-  
-m$peak_gpp <- month(as.Date(
-  paste0("2019-", mms$month[which.max(mms$gpp)], "-01")), label = T, abbr = T)
-m$peak_er = month(as.Date(
-  paste0("2019-", mms$month[which.min(mms$er)],"-01")), label = T, abbr = T)
-m$gpp_cum <- cum$GPP_cum[365]
-m$er_cum <- cum$ER_cum[365]
-m$nep_cum <- m$gpp_cum + m$er_cum
-m$year <- 2017
-
-hsum$method <- "direct calculation"
 # compile and format Hall 1972 data ####
-hall <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_table_15.csv") %>%
+hall <- read_csv("hall_50yl/code/data/hall/hall_table_15.csv") %>%
   mutate(date = as.Date(date, format = "%m/%d/%Y"),
          site = case_when(site == "Concrete" ~ "CBP",
                           site == "Blackwood" ~ "BLK", 
                           site == "Wood Bridge" ~ "WB")) %>%
   group_by(site, date) %>%
-  summarize(gpp = mean(GPP_gO2m2d, na.rm = T) * O2toC,
-            er = -mean(ER_gO2m2d, na.rm = T) * O2toC) %>%
+  summarize(gpp = mean(GPP_gO2m2d, na.rm = T),
+            er = -mean(ER_gO2m2d, na.rm = T)) %>%
   ungroup() %>%
   arrange(date)
 
@@ -190,250 +110,86 @@ for(i in 1:2){
 }
 
 hall_dat$method <- "direct calculation"
+write_csv(hall_dat, "NHC_2019_metabolism/data/metabolism/compiled/metabolism_summary_table_then_2021_01_v2.csv")
+
 # Summarize metabolism by month ####
-preds <- met$preds %>%
-  as_tibble() %>%
+d_met <- d_met %>%
+  mutate(year = case_when(era == "then" ~ 1969,
+                          TRUE ~ year)) %>%
+  filter(GPP < 3)
+
+monthly <- sm_met %>%
+  rename(discharge = discharge.daily) %>%
+  bind_rows(d_met) %>%
   select(-starts_with("K600"), -ends_with("Rhat"),
-         -errors,-good_flow, -method) %>%
-  mutate(month = substr(date, 6, 7),
-         across(starts_with(c("GPP", "ER")), ~ . * O2toC)) 
-# month_preds <- preds %>%
-#   filter(year == 2019) %>%
-#   select(-date, -year) %>%
-#   mutate(site = case_when(site == "nhc" ~ "NHC",
-#                    site == "cbp" ~ "CBP",
-#                    site == "pm" ~ "PM", 
-#                    site == "wb" ~ "WB",
-#                    site == "wbp" ~ "WBP",
-#                    site == "unhc" ~ "UNHC")) %>%
-#   group_by(site, month) %>%
-#   summarize(across(.fns = list(mean = ~mean(.,na.rm = T), 
-#                                sd = ~sd(.,na.rm = T)),
-#                    .names = "{col}_{fn}")) %>%
-#   ungroup() 
-month_preds <- preds %>%
+         -errors,-good_flow, -notes, -level_m, -doy) %>%
+  mutate(month = as.numeric(format(date, "%m"))) %>%
   select(-date) %>%
-  mutate(site = case_when(site == "nhc" ~ "NHC",
-                   site == "cbp" ~ "CBP",
-                   site == "pm" ~ "PM",
-                   site == "wb" ~ "WB",
-                   site == "wbp" ~ "WBP",
-                   site == "unhc" ~ "UNHC")) %>%
-  group_by(site, year, month) %>%
+  group_by(site, year, month, era, method) %>%
   summarize(across(.fns = list(mean = ~mean(.,na.rm = T),
                                sd = ~sd(.,na.rm = T)),
                    .names = "{col}_{fn}")) %>%
   ungroup()
 
-sum_month <- month_preds %>%
-  left_join(site_dat, by = "site")
-write_csv(sum_month, 
-          "data/metabolism/compiled/raymond_summarized_monthly.csv")
-# month_preds <- preds %>%
-#   select(-date, -site, -year) %>% 
-#   group_by(month) %>%
-#   summarize(across(.fns = list(mean = ~mean(.,na.rm = T), 
-#                                sd = ~sd(.,na.rm = T)),
-#                    .names = "{col}_{fn}")) %>%
-#   ungroup() %>%
-#   mutate(site = "all") %>%
-#   bind_rows(month_preds)
+cbp_monthly <- monthly %>%
+  filter(site == "CBP")
+geo_month <- left_join(monthly, site_dat, by = "site")
+
+# png("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/figures/longitudinal_met_all_methods.png",
+#     width = 6, height = 4, res = 300, units = "in")
 #   
-
-
-# m_preds <- month_preds %>%
-#   group_by(site, year) %>%
-#   summarize(peak_gpp = month(as.Date(
-#               paste0("2019-",month[which.max(GPP)],"-01")), 
-#               label = T, abbr = T),
-#             peak_er = month(as.Date(
-#               paste0("2019-", month[which.min(ER)], "-01")),
-#               label = T, abbr = T))
-
-hpreds <- hmet$preds %>%
-  as_tibble() %>%
-  select(-K600, -good_flow, -depth) %>%
-  mutate(month = substr(date, 6, 7),
-         across(starts_with(c("GPP","ER")), ~ . * O2toC))
-
-hmonth_preds <- hpreds %>%
-  select(-date) %>%
-  group_by(site, year, month) %>%
-  summarize(across(.fns = list(mean = ~mean(.,na.rm = T), 
-                               sd = ~sd(.,na.rm = T)),
-                   .names = "{col}_{fn}")) %>%
-  ungroup()
-
-hmonth_preds <- hpreds %>%
-  select(-date, -year, -site) %>%
-  group_by(month) %>%
-  summarize(across(.fns = list(mean = ~mean(.,na.rm = T), 
-                               sd = ~sd(.,na.rm = T)),
-                   .names = "{col}_{fn}")) %>%
-  ungroup() %>%
-  mutate(site = "all") %>%
-  bind_rows(hmonth_preds)
-hmonth_preds <- hpreds %>%
-  filter(site == "CBP") %>%
-  select(-date, -year, -site) %>%
-  group_by(month) %>%
-  summarize(across(.fns = list(mean = ~mean(.,na.rm = T), 
-                               sd = ~sd(.,na.rm = T)),
-                   .names = "{col}_{fn}")) %>%
-  ungroup() %>%
-  mutate(site = "CBP") %>%
-  bind_rows(hmonth_preds)
-
-
-# hm_preds <- hmonth_preds %>%
-#   group_by(site, year) %>%
-#   summarize(peak_gpp = month(as.Date(
-#               paste0("2019-", month[which.max(GPP)], "-01")),
-#               label = T, abbr = T),
-#             peak_er = month(as.Date(
-#               paste0("2019-", month[which.min(ER)],"-01")),
-#               label = T, abbr = T))
-
-# hallQ <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_figure26_digitized_dailystage.csv")
-# hallQT <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_figure27_digitized_mean_daily_temp.csv") %>%
-#   full_join(hallQ, by = "date") %>%
-#   group_by(date) %>%
-#   summarize(across(-notes, mean, na.rm = T)) %>%
-#   ungroup()
+#   all_sum %>% 
+#     filter(is.na(method)) %>%
+#   ggplot( aes(site, gpp_cum, color = year))+
+#     geom_bar() 
+#     geom_bar(aes(y = er_cum)) +
+#     geom_bar(aes(y = er_cum + gpp_cum)) +
+#     # facet_grid(era~.) +
+#     labs(title = "cumulative metabolism along 10 km",
+#            y = "GPP, ER, and NEP (gC/m2/y)")
 #   
-# hallQT <- data.frame(date = seq(min(hallQT$date), 
-#                                 max(hallQT$date), by = "day")) %>%
-#   left_join(hallQT, by = "date") %>%
-#   mutate(across( -date, na.approx, na.rm = F),
-#          notes = case_when(stage_cm < min(hall_rc$stage_cm) ~ "below RC",
-#                            stage_cm > max(hall_rc$stage_cm) ~ "above RC"))
-# write_csv(hallQT, "C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_discharge_temp_daily.csv")
-hallQT <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_discharge_temp_daily.csv")
-
-hall_month <- hall %>% 
-  mutate(month = substr(date, 6, 7),
-         year = as.numeric(substr(date, 1, 4))) %>%
-  left_join(hallQT[,c(1,2,4)], by = "date") %>%
-  select(-date) %>%
-  group_by(site, year, month) %>%
-  summarize(across(.fns = list(mean = ~mean(.,na.rm = T), 
-                               sd = ~sd(.,na.rm = T)),
-                   .names = "{col}_{fn}")) %>%  
-  ungroup() 
-hall_month <- hall %>% 
-  mutate(month = substr(date, 6, 7)) %>%
-  left_join(hallQT[,c(1,2,4)], by = "date") %>%
-  select(-date, -site) %>%
-  group_by(month) %>%
-  summarize(across(.fns = list(mean = ~mean(.,na.rm = T), 
-                               sd = ~sd(.,na.rm = T)),
-                   .names = "{col}_{fn}")) %>%  
-  ungroup() %>%
-  mutate(site = "all") %>%
-  bind_rows(hall_month)
-hall_month <- hall %>% 
-  filter(site == "CBP") %>%
-  mutate(month = substr(date, 6, 7)) %>%
-  left_join(hallQT[,c(1,2,4)], by = "date") %>%
-  select(-date, -site) %>%
-  group_by(month) %>%
-  summarize(across(.fns = list(mean = ~mean(.,na.rm = T), 
-                               sd = ~sd(.,na.rm = T)),
-                   .names = "{col}_{fn}")) %>%  
-  ungroup() %>%
-  mutate(site = "CBP") %>%
-  bind_rows(hall_month)
-
-  
-# compile all metabolism summaries ####
-sum <- left_join(sum, m_preds, by = c("site", "year")) %>%
-  select(-peaktime_er, -peaktime_gpp)
-
-
-hsum <- left_join(hsum, hm_preds, by = c("site", "year")) %>%
-  select(-peaktime_er, -peaktime_gpp)
-hsum <- bind_rows(hsum, m)
-
-hall_dat <- hall_dat %>%
-  mutate(peak_gpp = month(peaktime_gpp, label = T, abbr = T),
-         peak_er = month(peaktime_er, label = T, abbr = T)) %>%
-  select(-peaktime_er, -peaktime_gpp)
-  
-compiled <- sum %>%
-  mutate(site = as.character(site),
-         site = case_when(site == "nhc" ~ "NHC",
-                          site == "cbp" ~ "CBP",
-                          site == "pm" ~ "PM", 
-                          site == "wb" ~ "WB",
-                          site == "wbp" ~ "WBP",
-                          site == "unhc" ~ "UNHC")) %>%
-  bind_rows(hsum, hall_dat) %>%
-  left_join(site_dat)
-
-write_csv(compiled, "data/metabolism/compiled/metabolism_summary_table_gC.csv")
-comp <- compiled %>%
-  mutate(group = case_when(year >2000 & method == "inverse modeling" ~ 
-                             "raymond",
-                           year > 2000 & method == "direct calculation" ~
-                             "hall_method",
-                           TRUE ~ "hall_data"),
-         distance_m = ifelse(site == "BLK", 10000, distance_m)) %>%
-  filter(!is.na(distance_m)) %>%
-  filter(!(year %in% 2017:2018))
-
-png("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/figures/longitudinal_met_all_methods.png",
-    width = 6, height = 4, res = 300, units = "in")
-  ggplot(comp, aes(distance_m, gpp_cum))+
-    geom_line() +
-    geom_line(aes(y = er_cum)) +
-    geom_line(aes(y = gpp_cum + er_cum), lty = 2) +
-    facet_grid(group~.) +
-    labs(title = "cumulative metabolism along 10 km",
-           y = "GPP, ER, and NEP (gC/m2/y)")
-  
-dev.off()
+# dev.off()
 
 # met vs geomorph plots ####
+# png("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/figures/Q_by_month.png",
+#     width = 6, height = 4, res = 300, units = "in")
+  geo_month %>%
+    filter(method == "direct_calculation",
+           era == "now") %>%
+  ggplot(aes(x = month, y = GPP_mean, col = width_m)) +
+    geom_point(size = 3)
+    
 png("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/figures/Q_by_month.png",
     width = 6, height = 4, res = 300, units = "in")
-  ggplot(sum_month, aes(x = as.numeric(month), y = log(discharge.daily_mean), col = as.factor(year))) +
-    geom_line() + 
-    facet_wrap(.~site)
-dev.off()
-
-png("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/figures/Q_by_month.png",
-    width = 6, height = 4, res = 300, units = "in")
-  sum_month %>% filter(month %in% )
-  ggplot(sum_month, aes(x = as.numeric(month), y = GPP_mean, col = width_mar_m)) +
+  
+ggplot(geo_month, aes(x = month, y = GPP_mean, col = width_m)) +
     geom_point(size = 2) 
-    , col = as.factor(year))) +
-    facet_wrap(.~site)
+    
 dev.off()
 
 
 # plot metabolism by month ####
-
-month_preds <- month_preds %>%
-  mutate(month = as.numeric(month))
-hall_month <- hall_month %>%
-  mutate(month = as.numeric(month))
-
-allm <- month_preds %>% 
-  filter(site != "all")%>%
-  group_by(site, month) %>%
-  summarize(across(-year, mean, na.rm = T)) %>%
-  ungroup()
-all <- allm %>% 
-  group_by(month) %>%
-  summarize(across(-site, mean, na.rm = T)) %>%
-  ungroup() %>%
-  mutate(site = "all")
-
-allm <- month_preds
-png("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/figures/2019monthly_avg_met_all_sites_raymond.png",
+png("figures/2019monthly_avg_pr_all_sites_directcalc.png",
     width = 7.5, height = 5, res = 300, units = "in")
+monthly %>%
+  filter(era == "now",
+         year == 2019,
+         method == "direct_calculation") %>%
+ggplot(aes(x = month, y = -pr_mean)) +
+  geom_line() +
+  facet_wrap(.~ site) +
+  geom_hline(yintercept = 1, col = "grey") +
+  labs(title = "2019 monthly average P/R from direct calculation",
+       x = "month", y = "log(P/R)")
+dev.off()
 
-ggplot(allm, aes(x = as.numeric(month), y = GPP_mean)) +
+png("figures/2019monthly_avg_met_all_sites_directcalc.png",
+    width = 7.5, height = 5, res = 300, units = "in")
+monthly %>%
+  filter(era == "now",
+         year == 2019,
+         method == "direct_calculation") %>%
+ggplot(aes(x = month, y = GPP_mean)) +
   geom_line() +
   geom_ribbon(aes(ymin = GPP_mean - GPP_sd, 
                   ymax = GPP_mean + GPP_sd),
@@ -443,39 +199,160 @@ ggplot(allm, aes(x = as.numeric(month), y = GPP_mean)) +
                   ymax = ER_mean + ER_sd),
               fill = alpha("sienna", .3), col = NA) +
   facet_wrap(.~ site) +
-  ylim(-4,1.2) +
+  # ylim(-4,1.2) +
+  geom_hline(yintercept = 0, col = "grey") +
+  labs(title = "2019 monthly average metabolism from direct calculation",
+       x = "month", y = "gC/m2/d")
+dev.off()
+
+png("figures/2019monthly_avg_met_all_years_directcalc.png",
+    width = 7.5, height = 5, res = 300, units = "in")
+monthly %>%
+  filter(era == "now",
+         site %in% c("NHC", "UNHC"),
+         method == "direct_calculation") %>%
+ggplot(aes(x = month, y = GPP_mean)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = GPP_mean - GPP_sd, 
+                  ymax = GPP_mean + GPP_sd),
+              fill = alpha("forestgreen", .3), col = NA) +
+  geom_line(aes(y = ER_mean)) +
+  geom_ribbon(aes(ymin = ER_mean - ER_sd, 
+                  ymax = ER_mean + ER_sd),
+              fill = alpha("sienna", .3), col = NA) +
+  facet_grid(site ~ year) +
+  geom_hline(yintercept = 0, col = "grey") +
+  labs(title = "Monthly average metabolism from direct calculation",
+       x = "month", y = "gC/m2/d")
+dev.off()
+
+png("figures/2019monthly_avg_met_all_sites_SM.png",
+    width = 7.5, height = 5, res = 300, units = "in")
+monthly %>%
+  filter(year == 2019,
+         method == "uninformed_raymond") %>%
+ggplot(aes(x = month, y = GPP_mean)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = GPP_mean - GPP_sd, 
+                  ymax = GPP_mean + GPP_sd),
+              fill = alpha("forestgreen", .3), col = NA) +
+  geom_line(aes(y = ER_mean)) +
+  geom_ribbon(aes(ymin = ER_mean - ER_sd, 
+                  ymax = ER_mean + ER_sd),
+              fill = alpha("sienna", .3), col = NA) +
+  facet_wrap(.~ site) +
+  # ylim(-4,1.2) +
   geom_hline(yintercept = 0, col = "grey") +
   labs(title = "2019 monthly average metabolism from StreamMetabolizer",
        x = "month", y = "gC/m2/d")
 dev.off()
-png("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/figures/2019monthly_PR_all_sites_raymond.png",
+
+png("figures/2019monthly_avg_met_all_years_SM.png",
     width = 7.5, height = 5, res = 300, units = "in")
-
-ggplot(allm, aes(x = as.numeric(month), y = -GPP_mean/ER_mean)) +
+monthly %>%
+  filter(site %in% c("NHC", "UNHC"),
+         method == "uninformed_raymond") %>%
+ggplot(aes(x = month, y = GPP_mean)) +
   geom_line() +
-  facet_wrap(.~ site, scales = "free_y") +
-  geom_hline(yintercept = 1, col = "grey30", lty = 2) +
-  labs(title = "2019 Monthly Productivity:Respiration from StreamMetabolizer",
-       x = "month", y = "GPP/ER")
+  geom_ribbon(aes(ymin = GPP_mean - GPP_sd, 
+                  ymax = GPP_mean + GPP_sd),
+              fill = alpha("forestgreen", .3), col = NA) +
+  geom_line(aes(y = ER_mean)) +
+  geom_ribbon(aes(ymin = ER_mean - ER_sd, 
+                  ymax = ER_mean + ER_sd),
+              fill = alpha("sienna", .3), col = NA) +
+  facet_grid(site ~ year) +
+  geom_hline(yintercept = 0, col = "grey") +
+  labs(title = "Monthly average metabolism from StreamMetabolizer",
+       x = "month", y = "gC/m2/d")
 dev.off()
 
-ggplot(hall_month, aes(month, -GPP/ER, col = year)) +
-  geom_line() +
-  facet_wrap(.~site)+ 
-  ylim(0,1.5) +
-  theme_minimal()
 
-png("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/figures/ER_v_QT_raymond_met.png",
-    width = 6, height = 4, res = 300, units = "in")
-  month_preds %>%
-    filter(site != "all") %>%
-  ggplot(aes(log(discharge.daily_mean), ER_mean, 
-                          col = (temp.water_mean))) +
-    geom_point(size = 1.5) +
-    facet_wrap(.~site, scales = "free") +
-    geom_errorbar(aes(ymin = ER.lower_mean, ymax = ER.upper_mean))
+now_19 <- monthly %>%
+  filter(method == "direct_calculation",
+         era == "now",
+         year == 2019) 
+now_y <- monthly %>%
+  filter(method == "direct_calculation",
+         era == "now",
+         site %in% c("NHC", "UNHC")) 
+then <- monthly %>% 
+  filter(method == "direct_calculation",
+         era == "then",
+         site == "CBP")
+
+png("figures/Met_within_across_thennow.png",
+    width = 10, height = 4, res = 300, units = "in")
+ylim = c(-4,2.5)
+par(mfrow = c(1,3))
+plot(now_19$month, now_19$GPP_mean, type = 'n', 
+     ylab = "gO2/m2/d", xlab = "month", main = "across sites",
+     ylim = ylim)
+for(s in unique(now_19$site)){
+  lines(now_19$month[now_19$site == s], now_19$GPP_mean[now_19$site == s],
+        col = "forestgreen", lwd = 2 )
+  lines(now_19$month[now_19$site == s], now_19$ER_mean[now_19$site == s],
+        col = "sienna", lwd = 2)
+}
+abline(h = 0)
+plot(now_y$month, now_y$GPP_mean, type = 'n', 
+     ylab = "gO2/m2/d", xlab = "month", main = "across years",
+     ylim = ylim)
+for(s in unique(now_y$site)){
+  now_yy <- now_y %>% 
+    filter(site == s)
+  for(y in unique(now_yy$year)){
+    lines(now_yy$month[now_yy$year == y], now_yy$GPP_mean[now_yy$year == y],
+          col = "forestgreen", lwd = 2)
+    lines(now_yy$month[now_yy$year == y], now_yy$ER_mean[now_yy$year == y],
+          col = "sienna", lwd = 2)
+  }
+}
+abline(h = 0)
+plot(now_19$month[now_19$site == "CBP"], now_19$GPP_mean[now_19$site == "CBP"], 
+     type = 'l',ylab = "gO2/m2/d", xlab = "month", main = "across decades",
+     ylim = ylim, col = "forestgreen", lwd = 2)
+abline(h = 0)
+
+lines(now_19$month[now_19$site == "CBP"], now_19$ER_mean[now_19$site == "CBP"],
+      col = "sienna", lwd = 2)
+lines(then$month, then$GPP_mean, col = "forestgreen", lwd = 2)
+lines(then$month, then$ER_mean, col = "sienna", lwd = 2)
+
 dev.off()
 
+png("figures/PR_within_across_thennow.png",
+    width = 10, height = 4, res = 300, units = "in")
+par(mfrow = c(1,3))
+ylim = c(0,1.5)
+plot(now_19$month, -now_19$pr_mean, type = 'n', 
+     ylab = "gO2/m2/d", xlab = "month", main = "across sites",
+     ylim = ylim)
+for(s in unique(now_19$site)){
+  lines(now_19$month[now_19$site == s], -now_19$pr_mean[now_19$site == s],
+        lwd = 2 )
+}
+abline(h = 1)
+plot(now_y$month, -now_y$pr_mean, type = 'n', 
+     ylab = "gO2/m2/d", xlab = "month", main = "across years",
+     ylim = ylim)
+for(s in unique(now_y$site)){
+  now_yy <- now_y %>% 
+    filter(site == s)
+  for(y in unique(now_yy$year)){
+    lines(now_yy$month[now_yy$year == y], -now_yy$pr_mean[now_yy$year == y],
+          lwd = 2)
+  }
+}
+abline(h = 1)
+plot(now_19$month[now_19$site == "CBP"], -now_19$pr_mean[now_19$site == "CBP"], 
+     type = 'l',ylab = "gO2/m2/d", xlab = "month", main = "across decades",
+     ylim = ylim, lwd = 2)
+abline(h = 1)
+lines(then$month, -then$pr_mean, lwd = 2)
+
+dev.off()
+ 
 png("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/figures/annual_NEP_nowthen.png",
     width = 7.5, height = 6, res = 300, units = "in")
   par(mar = c(0,4,4,3), mfrow = c(2,1))

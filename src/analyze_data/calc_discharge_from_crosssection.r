@@ -1,28 +1,5 @@
 # Calculate Discharge from cross sectional velocity measurements
-# A Carter
-# 12/15/2020
-
-# load packages ####
-library(tidyverse)
-library(lubridate)
-library(zoo)
-
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism")
-
-
-# # 1. load and munge data ####
-# qdat <- read_csv("data/rating_curves/discharge_measurements.csv")
-# fnotes <- read_csv("data/water_chemistry/nhc_ysi_data.csv") %>%
-#   mutate( stage_m = waterdepth_cm/100) %>%
-#   select(site, date, time, stage_m)
-# 
-# # none of these dates overlap, so it can't help me with stages.
-# 
-# dat <- qdat %>%
-#   filter(site == "MC751", date == as.Date("2020-06-12"))
-
-# 2. fns to calc Q and plot cross section ####
-
+# 1. fns to calc Q and plot cross section ####
 
 plot_xc <- function(dat){
   par(mfrow = c(2,1), mar = c(0,4,4,1))
@@ -68,13 +45,15 @@ calc_xc_discharge <- function(dists, depths, vels){
     xc_area = sum(dd$a),
     depth_avg = sum(dd$a)/max(dists),
     velocity_avg = sum(dd$a * dd$v)/sum(dd$a),
-    discharge = sum(dd$a * dd$v))
+    discharge = sum(dd$a * dd$v), 
+    depth_thalweg = max(dd$depths))
+    
   
   return(out)
 }
 
 add_point_to_rc <- function(out){
-  qq <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/rating_curves/calculated_discharge.csv")
+  qq <- read_csv("NHC_2019_metabolism/data/rating_curves/calculated_discharge.csv")
   if(row.names(out) %in% row.names(qq)){ 
     next } else {
       stop(paste("this dataframe has columns that it shouldn't. 
@@ -82,6 +61,5 @@ add_point_to_rc <- function(out){
     }
   qq <- bind_rows(qq, out)
   write_csv(qq,
-            "C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/data/rating_curves/calculated_discharge.csv")
-
+            "NHC_2019_metabolism/data/rating_curves/calculated_discharge.csv")
 }

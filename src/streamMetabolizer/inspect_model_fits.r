@@ -8,10 +8,14 @@ library(streamMetabolizer)
 
 # Cleaning and summarizing ####
 filter_model <- function(fit, flow_dates, GPP_min = 0, ER_max = 0){
-  q <- fit@data[,c(1,6,8)] %>%
+  q <- fit@data[,c(1,3,4,6,8)] %>%
     group_by(date) %>%
-    summarize_all(mean, na.rm = T) %>%
-    select(date, discharge.daily = discharge, temp.water) %>%
+    summarize(discharge.daily = mean(discharge, na.rm = T),
+              temp.min = min(temp.water, na.rm = T),
+              temp.water = mean(temp.water, na.rm = T),
+              DO.obs = mean(DO.obs, na.rm = T),
+              DO.sat = mean(DO.sat, na.rm = T)) %>%
+    ungroup() %>%
     left_join(flow_dates[,c(1,4)]) 
   preds <- get_fit(fit)$daily  %>%
     select(date, GPP = GPP_daily_50pct, 
@@ -72,9 +76,11 @@ fill_summarize_met <- function(preds){
     summarize(gpp_mean = mean(GPP, na.rm = T),
               gpp_median = median(GPP, na.rm = T),
               gpp_max = max(GPP, na.rm = T),
+              gpp_cv = sd(GPP, na.rm = T)/mean(GPP, na.rm = T),
               er_mean = -mean(ER, na.rm = T),
               er_median = -median(ER, na.rm = T),
-              er_max = -min(ER, na.rm = T))
+              er_max = -min(ER, na.rm = T),
+              er_cv = -sd(ER, na.rm = T)/mean(ER, na.rm = T))
   cum <- data.frame(date = seq(preds$date[1], 
                                preds$date[nrow(preds)], 
                                by = "day")) %>%
@@ -193,7 +199,8 @@ plot_KvER <- function(preds){
 }
 
 
-plot_metab <- function(met, ylim = NULL, doy = F, main = "", error = T){
+plot_metab <- function(met, ylim = NULL, xlim = NULL, doy = F, main = "", error = T, 
+                       xaxt = NULL, yaxt = NULL){
 
   if(error){
     yrange = range(c(met$GPP.upper, met$ER.lower), na.rm = T)
@@ -201,14 +208,18 @@ plot_metab <- function(met, ylim = NULL, doy = F, main = "", error = T){
     yrange = range(c(met$GPP, met$ER), na.rm = T)
   }
   if(!is.null(ylim)){yrange = ylim}
+  if(!is.null(xlim)){
+    xlim = range(met$date)
+  }
   if(doy == T){
     met <- met %>%
       mutate(date = doy) %>%
       arrange(date)
     }
   plot(met$date, met$GPP, main = main,
-       type = "l", lwd = 2, col = "forestgreen",
-       ylim = yrange, xlab = "date", ylab = "gO2/m2/d")  
+       type = "l", lwd = 2, col = "forestgreen", xaxt = xaxt, yaxt = yaxt,
+       ylim = yrange, xlim = xlim, xlab = "date", ylab = "gO2/m2/d",
+       frame.plot = T)  
   lines(met$date, met$ER, 
         lwd = 2, col = "sienna")
   if(error){
@@ -276,17 +287,17 @@ K600toO2<-function(temp, K600) {
   }
 
 plot_k <- function(preds, xlim = NULL){
-  hall <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_tableA2_k_morphology.csv") 
-  k <- K600toO2(preds$temp.water,preds$K600)/24
+  hall <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_tableA2_k_morphology_extended.csv") 
+  k = preds$K600
   if(is.null(xlim)){
-    xlim <- range(c(k, hall$k_gm3hr), na.rm = T)
+    xlim <- range(c(k, hall$K600), na.rm = T)
   } else {xlim = c(0, xlim)}
-  plot(density(k, na.rm = T), xlab = "K_O2 (day-1)", 
+  plot(density(k, na.rm = T), xlab = "K600 (day-1)", 
        main = "K values", lwd = 2,  xlim = c(xlim[1]-1, xlim[2]+1))
   par(new = T)
-  plot(density(hall$k_gm3hr, na.rm = T), xlab = "",xaxt = "n", yaxt = "n", 
+  plot(density(hall$K600, na.rm = T), xlab = "",xaxt = "n", yaxt = "n", 
        main = "", lwd = 2,col = "brown3", xlim = c(xlim[1]-1, xlim[2]+1))
-  legend("topright",cex = .7,bty = "n",
+  legend("topright", bty = "n", lty = 1, 
          c("now","hall"), col = c(1, "brown3"))
 }
 

@@ -1,228 +1,214 @@
 # Update rating curve file with new discharge measurement
+source("NHC_2019_metabolism/src/analyze_data/calc_discharge_from_crosssection.r")
 
-# A Carter
-# 12/15/2020
-
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism/")
-source("src/analyze_data/calc_discharge_from_crosssection.r")
-
-# 1. load and munge data ####
-qdat <- read_csv("data/rating_curves/discharge_measurements.csv")
-sp_qdat <- read_csv("data/rating_curves/discharge_measurements_NHC_UNHC.csv")
-sdat <- read_csv("data/siteData/NHCsite_metadata.csv")
-                 
-# 2. initial calcs to create rc_sheet ####
-# setting negative V equal to zero to be consistent with E Moore's data
-qdat$velocity_ms[qdat$velocity_ms<0] <- 0
-
-qq <- data.frame()
-for(site in unique(qdat$site)){
-  sdat <- qdat %>%
-  filter(site == !!site)
-  
-  for(date in unique(sdat$date)){
-    dat <- sdat %>%
-      filter(date == !!date)
-  
-    plot_xc(dat)
-    out <- calc_xc_discharge(dat$distance_m, dat$depth_m, dat$velocity_ms)
-    out <- dat %>%
-      slice(1) %>%
-      select(date, time, site, stage_m, notes) %>%
-      bind_cols(out)
-    qq <- bind_rows(qq, out)
-  }
-}
-
-qq[,-5]
-
-# 3. run on old SP data for NHC and UNHC ####
-#qq <- data.frame()
-qdat <- sp_qdat
-for(site in unique(qdat$site)){
-  sdat <- qdat %>%
-  filter(site == !!site)
-  
-  for(date in unique(sdat$date)){
-    dat <- sdat %>%
-      filter(date == !!date)
-  
-    plot_xc(dat)
-    out <- calc_xc_discharge(dat$distance_m, dat$depth_m, dat$velocity_ms)
-    out <- dat %>%
-      slice(1) %>%
-      select(date, time, site, stage_m, notes) %>%
-      bind_cols(out)
-    qq <- bind_rows(qq, out)
-  }
-}
-
+# # 1. load and munge data ####
+# qdat <- read_csv("NHC_2019_metabolism/data/rating_curves/discharge_measurements.csv")
+# sp_qdat <- read_csv("NHC_2019_metabolism/data/rating_curves/discharge_measurements_NHC_UNHC.csv")
+# metadat <- read_csv("NHC_2019_metabolism/data/siteData/NHCsite_metadata.csv")
+# 
+# # 2. initial calcs to create rc_sheet ####
+# # setting negative V equal to zero to be consistent with E Moore's data
+# qdat$velocity_ms[qdat$velocity_ms<0] <- 0
+# 
+# qq <- data.frame()
+# for(site in unique(qdat$site)){
+#   sdat <- qdat %>%
+#   filter(site == !!site)
+# 
+#   for(date in unique(sdat$date)){
+#     dat <- sdat %>%
+#       filter(date == !!date)
+# 
+#     plot_xc(dat)
+#     out <- calc_xc_discharge(dat$distance_m, dat$depth_m, dat$velocity_ms)
+#     out <- dat %>%
+#       slice(1) %>%
+#       select(date, time, site, stage_m, notes) %>%
+#       bind_cols(out)
+#     qq <- bind_rows(qq, out)
+#   }
+# }
+# 
 # qq[,-5]
-dev.off()
-qq <- sdat %>% 
-  select(site = sitecode, location_m = distance_m) %>%
-  right_join(qq, by = "site")
-write_csv(qq, "data/rating_curves/calculated_discharge.csv")  
-# 3. Add a new point to the Q file ####
-# this step is likely to be custom for each site/date, so we'll do one at a time
-
-qq <- read_csv("data/rating_curves/calculated_discharge.csv") 
-qq <- qq%>%
-  mutate(DateTime_EST = round_date(ymd_hms(paste(date, time), tz = "EST"),
-                                   unit = "15 minutes"))
-
+# 
+# # 3. run on old SP data for NHC and UNHC ####
+# #qq <- data.frame()
+# qdat <- sp_qdat
+# for(site in unique(qdat$site)){
+#   sdat <- qdat %>%
+#   filter(site == !!site)
+# 
+#   for(date in unique(sdat$date)){
+#     dat <- sdat %>%
+#       filter(date == !!date)
+# 
+#     plot_xc(dat)
+#     out <- calc_xc_discharge(dat$distance_m, dat$depth_m, dat$velocity_ms)
+#     out <- dat %>%
+#       slice(1) %>%
+#       select(date, time, site, stage_m, notes) %>%
+#       bind_cols(out)
+#     qq <- bind_rows(qq, out)
+#   }
+# }
+# 
+# # qq[,-5]
+# dev.off()
+# qq <- metadat %>%
+#   select(site = sitecode, location_m = distance_m) %>%
+#   right_join(qq, by = "site")
+# 
+# ggplot(qq, aes(stage_m, discharge)) +
+#   geom_point() +
+#   facet_wrap(.~site)
+# write_csv(qq, "NHC_2019_metabolism/data/rating_curves/calculated_discharge.csv")
 # 4. add stages ####
-# for the points that don't have it get from LL
-# for the points that do, compare with LL
-
-# NHC
-levels <- read_csv("data/rating_curves/NHC_UNHC_corrected_level.csv") %>%
-  mutate(DateTime_EST = with_tz(DateTime_UTC, tz = "EST")) %>%
-  select(DateTime_EST, level_unhc, level_nhc) 
-levels <- read_csv("data/metabolism/processed/PM_lvl.csv") %>%
-  mutate(DateTime_EST = with_tz(DateTime_EST, tz = "EST")) %>%
-  select(DateTime_EST, level_pm = level_m) %>%
-  full_join(levels)
-levels <- read_csv("data/metabolism/processed/CBP_lvl.csv") %>%
-  mutate(DateTime_EST = with_tz(DateTime_EST, tz = "EST")) %>%
-  select(DateTime_EST, level_cbp = level_m) %>%
-  full_join(levels)
-levels <- read_csv("data/metabolism/processed/WB_lvl.csv") %>%
-  mutate(DateTime_EST = with_tz(DateTime_EST, tz = "EST")) %>%
-  select(DateTime_EST, level_wb = level_m) %>%
-  full_join(levels)
-levels <- read_csv("data/metabolism/processed/WBP_lvl.csv") %>%
-  mutate(DateTime_EST = with_tz(DateTime_EST, tz = "EST")) %>%
-  select(DateTime_EST, level_wbp = level_m) %>%
-  full_join(levels)
-levels <- read_csv("data/metabolism/processed/PWC.csv") %>%
-  mutate(DateTime_EST = with_tz(DateTime_EST, tz = "EST")) %>%
-  select(DateTime_EST, level_pwc = level_m) %>%
-  full_join(levels) %>%
-  arrange(DateTime_EST)
-par(mfrow = c(2,3))
-plot((levels$level_nhc), (levels$level_unhc), pch = 20, xlim = c(.5, .7), ylim = c(0.4, 0.6))
-unhcab <- lm(log(level_unhc) ~ log(level_nhc), levels)$coefficients
-abline(unhcab)
-plot(log(levels$level_nhc), log(levels$level_pm), pch = 20, col = 2) 
-pmab <- lm(log(level_pm) ~log(level_nhc), levels)$coefficients
-abline(pmab)
-plot(log(levels$level_nhc), log(levels$level_cbp), pch = 20, col = 3)
-cbpab <- lm(log(level_cbp) ~log(level_nhc), levels)$coefficients
-abline(cbpab)
-plot(log(levels$level_nhc), log(levels$level_wb), pch = 20, col = 4)
-wbab <- lm(log(level_wb) ~log(level_nhc), levels)$coefficients
-abline(wbab)
-plot(log(levels$level_nhc), log(levels$level_wbp), pch = 20, col = 5)
-wbpab <- lm(log(level_wbp) ~log(level_nhc), levels)$coefficients
-abline(wbpab)
-plot(log(levels$level_nhc), log(levels$level_pwc), pch = 20, col = 6)
-pwcab <- lm(log(level_pwc) ~log(level_nhc), levels)$coefficients
-abline(pwcab)
-
-# grab level for the day/time of Q measurement
-qql <- qq %>% 
-  left_join(levels) %>%
-  mutate(level = case_when(site == "NHC" ~ level_nhc,
-                           site == "PM" ~ level_pm,
-                           site == "CBP" ~ level_cbp,
-                           site == "WB" ~ level_wb,
-                           site == "WBP" ~ level_wbp,
-                           site == "PWC" ~ level_pwc,
-                           site == "UNHC" ~ level_unhc),
-         level_mod = case_when(site == "PM" ~ 
-                                 exp(pmab[1] + pmab[2] * log(level_nhc)),
-                               site == "CBP" ~
-                                 exp(cbpab[1] + cbpab[2] * log(level_nhc)),
-                               site =="WB" ~ 
-                                 exp(wbab[1] + wbab[2] * log(level_nhc)),
-                               site == "WBP" ~
-                                 exp(wbpab[1] + wbpab[2] * log(level_nhc)),
-                               site == "UNHC" ~
-                                 exp(unhcab[1] + unhcab[2] * log(level_nhc)))) %>%
-  select(-level_pm, -level_cbp, -level_wb,
-         -level_wbp, -level_pwc, -notes)
-
-write_csv(qql, "data/rating_curves/calculated_discharge_with_levels.csv")
-qql <- read_csv("data/rating_curves/calculated_discharge_with_levels.csv")
-
-par(mfrow = c(1,1))
-plot(qql$stage_m, qql$level)
-abline(0,1)
-
-
-# # the 9/22/2016 date is problematic
-# w <- which(tmp$date == as.Date("2016-09-22"))
-# tmp$level_m[w] <- NA
-ggplot(qql, aes(stage_m, level, color = site)) +
-  geom_point()+
-  geom_smooth(method = "lm")
-
-qq_l <- qql %>%
-  mutate(level = case_when(is.na(level) ~  stage_m,
-           #                level > 1.6 ~ stage_m,
-                           !is.na(level) ~ level))
-
-# inspect data ####
-qq_l %>%
-  filter(site == "UNHC") %>%
-  ggplot(aes(level, discharge)) +
-  geom_point(aes(color = date), size = 2)
-
-# Assign proper discharges to the pool sections on days when a pool and 
+# qq <- read_csv("NHC_2019_metabolism/data/rating_curves/calculated_discharge.csv")
+# qq <- qq%>%
+#   mutate(DateTime_EST = round_date(ymd_hms(paste(date, time), tz = "EST"),
+#                                    unit = "15 minutes"))
+# 
+# levels <- read_csv("NHC_2019_metabolism/data/rating_curves/all_sites_level_corrected.csv") %>%
+#   pivot_wider(names_from = "site", values_from = "level_m") %>%
+#   mutate(DateTime_EST = with_tz(DateTime_UTC, tz = "EST")) #%>%
+#   # select(DateTime_EST, NHC_level = NHC, UNHC_level = UNHC)
+# 
+# qql <- qq %>%
+#   left_join(levels)
+# 
+# qql %>%
+#   filter(site %in% c( "NHC")) %>%
+#   ggplot(aes(stage_m, discharge)) +
+#   geom_point() +
+#   facet_wrap(.~site)
+# 
+# # inspect data ####
+# qql %>%
+#   filter(site == "UNHC") %>%
+#   ggplot(aes(stage_m, discharge)) +
+#   geom_point(aes(color = UNHC), size = 4)
+# 
+# Assign proper discharges to the pool sections on days when a pool and
 # neighboring riffle were measured
 
-# PM: that q is just wrong, but we didn't measure a riffle. Will pair with 
+# PM: that q is just wrong, but we didn't measure a riffle. Will pair with
 # interpolated Q to see what we get
 
 # CBP
-qq_l %>%
-  filter(grepl("CBP", site))
-# these two Q's look comprable, I will average them.
-w <- which(grepl("CBP", qq_l$site) & qq_l$date == as.Date("2020-06-19"))
-qq_l$discharge[w] <- mean(qq_l$discharge[w], na.rm = T)
-w <- which(grepl("CBP", qq_l$site) & qq_l$date == as.Date("2020-08-23"))
-qq_l$discharge[w] <- mean(qq_l$discharge[w], na.rm = T)
+# qql %>%
+#   filter(grepl("CBP", site))
+# # these two Q's look comprable, I will average them.
+# w <- which(grepl("CBP", qql$site) & qql$date == as.Date("2020-06-19"))
+# qql$discharge[w] <- mean(qql$discharge[w], na.rm = T)
+# w <- which(grepl("CBP", qql$site) & qql$date == as.Date("2020-08-23"))
+# qql$discharge[w] <- mean(qql$discharge[w], na.rm = T)
+# 
+# # WBP
+# qql %>%
+#   filter(grepl("WBP", site))
+# # here I am going to trust the riffle velocity
+# w <- which(grepl("WBP", qql$site) & qql$date == as.Date("2020-06-19"))
+# qql$discharge[w[1]] <- qql$discharge[w[2]]
+# 
+# # now correct the average velocites based on new Qs
+# # and get rid of the riffle points
+# qql$velocity_avg <- qql$discharge/qql$xc_area
+# qql <- qql %>%
+#   filter(!grepl("riffle", site))
+# 
+# qql <- qql %>%
+#   mutate(DateTime_UTC = with_tz(DateTime_EST, tz = "UTC")) %>%
+#   mutate(level = case_when(site == "NHC" ~ NHC,
+#                            site == "PM" ~ PM,
+#                            site == "CBP" ~ CBP,
+#                            site == "WB" ~ WB,
+#                            site == "WBP" ~ WBP,
+#                            site == "UNHC" ~ UNHC
+#                            )) %>%
+#   select(-(15:21))
 
-# WBP
-qq_l %>%
-  filter(grepl("WBP", site))
-# here I am going to trust the riffle velocity
-w <- which(grepl("WBP", qq_l$site) & qq_l$date == as.Date("2020-06-19"))
-qq_l$discharge[w[1]] <- qq_l$discharge[w[2]]
+# Qdat <- read_csv("NHC_2019_metabolism/data/rating_curves/interpolatedQ_allsites.csv", 
+#                  guess_max = 10000) %>%
+#   select(-notes)
+# qql <- qql %>% 
+#   left_join(Qdat, by = "DateTime_UTC") %>%
+#   mutate(discharge_rc = case_when(site == "NHC" ~ NHC.Q,
+#                            site == "PM" ~ PM.Q,
+#                            site == "CBP" ~ CBP.Q,
+#                            site == "WB" ~ WB.Q,
+#                            site == "WBP" ~ WBP.Q,
+#                            site == "UNHC" ~ UNHC.Q
+#                            )) %>%
+#   select(-(16:22))
 
-# now correct the average velocites based on new Qs 
-# and get rid of the riffle points
-qq_l$velocity_avg <- qq_l$discharge/qq_l$xc_area
-qq_l <- qq_l %>%
-  filter(!grepl("riffle", site))
-# qq_l %>%
-#   rename(DateTime_UTC = DateTime_EST) %>%
-# write_csv(qq_l, "data/rating_curves/calculated_discharge_modified.csv")
+# write_csv(qql, "NHC_2019_metabolism/data/rating_curves/calculated_discharge_with_levels.csv")
+
+
+# Add a zero flow point for the NHC Q curve ####
+# m_diff = 0.04436296 
+
+qql <- read_csv("NHC_2019_metabolism/data/rating_curves/calculated_discharge_with_levels.csv")
+levels <- read_csv("NHC_2019_metabolism/data/rating_curves/all_sites_level_corrected.csv",
+                   guess_max = 100000) #%>%
+  # mutate(level_m = case_when(site == "UNHC" ~ level_m - m_diff,
+  #                            TRUE ~ level_m))
+# write_csv(levels, "NHC_2019_metabolism/data/rating_curves/all_sites_level_corrected.csv")
+
+# unhc <- read_csv("NHC_2019_metabolism/data/metabolism/corrected_level/UNHC_lvl.csv") %>%
+#   mutate(level_m = level_m - m_diff)
+
+# write_csv(unhc, "NHC_2019_metabolism/data/metabolism/corrected_level/UNHC_lvl.csv")
+
+levels <- levels %>%  
+  pivot_wider(names_from = "site", values_from = "level_m") %>%
+  select(DateTime_UTC, NHC, UNHC, notes) %>%
+  mutate(DateTime_EST = with_tz(DateTime_UTC, tz = "EST")) %>%
+  arrange(DateTime_EST) 
+# levels %>%
+#   select(-DateTime_EST) %>%
+#   xts(order.by = levels$DateTime_EST) %>%
+#   dygraph() %>%
+#   dyRangeSelector()
+# Zero flow occurs at a stage of 0.64 at NHC (by observation),
+
 # Build Rating Curves ####
-qq_l <- read_csv("data/rating_curves/calculated_discharge_modified.csv")
-nhc <- qq_l %>%
+# qql$stage_m[qql$site =="UNHC"][2] <- qql$UNHC[qql$site =="UNHC"][2]
+nhc <- qql %>%
   filter(site =="NHC")
-nhc <- bind_rows(nhc, data.frame(level = .53, discharge = .05)) # this is the min stage and the min flow
-unhc <- qq_l %>%
-  filter(site =="UNHC")%>%
-  slice(c(-2,-3))
-  unhc$level[1]<- c(.38)
-m <- lm(log(discharge)~log(level), data = nhc)
-m_coef <- summary(m)$coefficients[,1]
-plot(nhc$level, nhc$discharge)
-lines(seq(0,2, by = .01), exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2])
-m <- lm(log(discharge)~log(stage_m), data = nhc)
-m_coef <- summary(m)$coefficients[,1]
-points(nhc$level, nhc$discharge,pch = 20, col = 5)
-lines(seq(0,2, by = .01), exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2], col = 5)
 
-m <- lm(log(discharge)~log(level), data = unhc)
-m_coef <- summary(m)$coefficients[,1]
-plot(unhc$level, unhc$discharge)
-lines(seq(0,2, by = .01), exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2])
-lines(seq(0,2, by = .01), exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2], col = 2)
-points(unhc$level, unhc$discharge,pch = 20, col = 2)
+# nhc <- data.frame(stage_m = .64, discharge = 0.005) %>% bind_rows(nhc)
+unhc <- qql %>%
+  filter(site =="UNHC") %>%
+  slice(c( -3, -2))
+# unhc$discharge[1]<- c(.001)
+# unhc <- data.frame(stage_m = .35, discharge = 0.01) %>% bind_rows(unhc)
+# 
+# m <- lm(log(discharge)~log(stage_m), data = nhc)
+# m_coef <- summary(m)$coefficients[,1]
+# 
+# # What does this curve predict at 0.62 stage?
+# plot(nhc$stage_m, nhc$discharge, xlim = c(.5, 1.5), ylim = c(0,2))
+# lines(seq(0,2, by = .01), exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2], col = 2)
+# med <- median(levels$NHC, na.rm = T)
+# nhc_medq <- exp(m_coef[1]) * med ^ m_coef[2]
+# abline(h = nhc_medq, v = med)
+# par(new = T)
+# plot(density((levels$NHC), na.rm = T), col = 3, xlim = c(.5, 1.5), axes = F)
+# 
+# #calculate expected median UNHC by watershed area
+# unhc_medq <- nhc_medq *sites$ws_area.km2[7]/sites$ws_area.km2[1] 
+# 
+# m <- lm(log(discharge)~log(stage_m), data = unhc)
+# m_coef <- summary(m)$coefficients[,1]
+# plot(unhc$stage_m, (unhc$discharge), xlim = c(.2, .8), ylim = c(0,2))
+# lines(seq(0,2, by = .01), exp(m_coef[1]) * seq(0,2, by = .01) ^ m_coef[2], col = 2)
+# u_med <- median(levels$UNHC, na.rm = T)
+# med <- (unhc_medq/exp(m_coef[1])) ^ (1/m_coef[2])
+# abline(h = unhc_medq, v = med)
+# 
+# par(new = T)
+# plot(density((levels$UNHC), na.rm = T), col = 3, xlim = c(.2, .8), axes = F)
+# med_diff <- u_med-med 
 
 build_powerlaw_rc <- function(l, q, site){
   m <- lm(log(q)~log(l))
@@ -240,26 +226,114 @@ build_powerlaw_rc <- function(l, q, site){
   return(out)
 }
 
-rc <- data.frame()
-rc <- bind_rows(rc, build_powerlaw_rc(nhc$level, nhc$discharge, "NHC"))
-#rc <- bind_rows(rc, build_powerlaw_rc(nhc$stage_m, nhc$discharge, "NHC"))
-rc <- bind_rows(rc, build_powerlaw_rc(unhc$level, unhc$discharge, "UNHC"))
+ZQdat <- data.frame()
+ZQdat <- bind_rows(ZQdat, build_powerlaw_rc(nhc$stage_m, nhc$discharge, "NHC"))
+ZQdat$min_Q = 0 
+ZQdat$min_l = 0.64
+ZQdat <- bind_rows(ZQdat, build_powerlaw_rc(unhc$stage_m, unhc$discharge, "UNHC"))
 
-rc$notes <- c("with low flow min stage point included (based on UNHC)",
-              "with two high flow low level points excluded",
-              "all Q measurements")
 
-write_csv(rc, "data/rating_curves/modified_ZQ_curves.csv")
-# look across sites on the two dates where multiple were measured. ####
+# Calculate discharge from rating curves ####
+# Q = a * level ^ b
+# ZQdat_sp <- read_csv(file="siteData/NC_streampulseZQ_data.csv")
+# ZQdat <- read_csv("NHC_2019_metabolism/data/rating_curves/modified_ZQ_curves.csv")
+qq <- levels %>%
+  # filter(DateTime_UTC <= ymd_hms("2020-03-02 00:00:00"))%>%
+  mutate(discharge_nhc = exp(ZQdat$a[1] + ZQdat$b[1] * log(NHC)),
+         # discharge_nhc = case_when(is.na(NHC) ~ NA_real_,
+         #                           NHC <= 0.64 ~ 0,
+         #                           NHC <= x2 ~ a * (NHC - 0.64),
+         #                           TRUE ~ exp(ZQdat$a[1]) + NHC ^ ZQdat$b[1]),
+         discharge_unhc = exp(ZQdat$a[2] + ZQdat$b[2] * log(UNHC)),
+         notes_rc = case_when(discharge_nhc > ZQdat$max_Q[1] ~
+                                "above NHC rc",
+                              discharge_unhc > ZQdat$max_Q[2] ~
+                                "above UNHC rc"))
 
-a <- qq_l %>%
-  filter(date == as.Date("2020-06-19")) 
-data.frame(location_m = c(sdat$distance_m[sdat$sitecode =="NHC"],
-                          sdat$distance_m[sdat$sitecode =="UNHC"]),
-           discharge = c(a$NHC_Q[1], a$UNHC_Q[1])) %>%
-  bind_rows(a) %>%
-  ggplot(aes(location_m, discharge)) +
-  geom_point()
+# qq %>%
+#   # mutate(discharge_nhc = log(discharge_nhc),
+#   #        discharge_unhc = log(discharge_unhc)) %>%
+#   select(discharge_nhc,  discharge_unhc) %>%
+#   xts(order.by = qq$DateTime_UTC) %>%
+#   dygraph() %>% dyRangeSelector()
+nnhc <- sum(!is.na(qq$NHC))
+nunhc <- sum(!is.na(qq$UNHC))
 
-# 6/19/20 is on the falling limb of a storm, while 8/23/20 is just low.
-# none of this makes any sense.
+ZQdat <- data.frame(site = c("NHC","UNHC"),
+                    above_rc = 
+                      c(sum(qq$NHC > ZQdat$max_l[1], na.rm = T)/nnhc,
+                        sum(qq$UNHC > ZQdat$max_l[2], na.rm = T)/nunhc),
+                    below_rc = 
+                      c(sum(qq$NHC < ZQdat$min_l[1], na.rm = T)/nnhc,
+                        sum(qq$UNHC < ZQdat$min_l[2], na.rm = T)/nunhc)) %>% 
+  left_join(ZQdat)
+
+write_csv(ZQdat, "NHC_2019_metabolism/data/rating_curves/modified_ZQ_curves.csv")
+
+# par(mfrow = c(1,1))
+# plot(qq$discharge_unhc, qq$discharge_nhc,log = "xy",
+#      xlab = "unhc Q", ylab = "nhc Q", pch = 20)
+# Interpolate discharge ####
+write_csv(qq, "NHC_2019_metabolism/data/rating_curves/NHC_UNHC_Q.csv")
+# qq <- read_csv("NHC_2019_metabolism/data/rating_curves/NHC_UNHC_Q.csv", guess_max = 10000)
+# plot_pres(qq, "discharge_nhc", "discharge_unhc")
+
+# sites <- read_csv("NHC_2019_metabolism/data/siteData/NHCsite_metadata.csv") %>%
+#   slice(1:7)
+newQdat <- qq %>%
+  mutate(PM.Q = NA_real_,
+         CBP.Q = NA_real_,
+         WB.Q = NA_real_,
+         WBP.Q = NA_real_,
+         PWC.Q = NA_real_) %>%
+  select(DateTime_UTC, NHC.Q = discharge_nhc,
+         PM.Q, CBP.Q, WB.Q, WBP.Q, PWC.Q, 
+         UNHC.Q = discharge_unhc, notes) %>%
+  # filter(DateTime_UTC >= ymd_hms("2019-03-01 00:00:00")) %>%
+  as.data.frame() %>%
+  filter(DateTime_UTC <= ymd_hms("2020-04-01 00:00:00"))
+
+w <- which(!is.na(newQdat$NHC.Q))
+newQdat <- newQdat[w[1]:w[length(w)],]
+for(i in which(!is.na(newQdat$NHC.Q))){
+  if(is.na(newQdat$UNHC.Q[i])){ next }
+  df <- data.frame(Q = c(newQdat$NHC.Q[i], NA, NA, NA, NA, NA,
+                         newQdat$UNHC.Q[i]), 
+                   area = c(sites$ws_area.km2[1:7])) %>%
+    mutate(Q = na.approx(Q, x = area))
+  
+  newQdat[i, 2:8] <- df$Q
+  if(i %% 5000 == 0) { print(i/nrow(newQdat))}
+}
+
+write_csv(newQdat, "NHC_2019_metabolism/data/rating_curves/interpolatedQ_allsites.csv")
+# plot(newQdat$DateTime_UTC, newQdat$NHC.Q, col = "grey80", type = "l", log = "y")
+# lines(newQdat$DateTime_UTC, newQdat$NHC.Q, col = "grey80")
+# lines(newQdat$DateTime_UTC, newQdat$PM.Q, col = "grey60")
+# lines(newQdat$DateTime_UTC, newQdat$CBP.Q, col = "grey50")
+# lines(newQdat$DateTime_UTC, newQdat$WB.Q, col = "grey40")
+# lines(newQdat$DateTime_UTC, newQdat$WBP.Q, col = "grey35")
+# lines(newQdat$DateTime_UTC, newQdat$UNHC.Q, col = "grey20")
+
+# filter high flow days and impossible values #
+deltaQ_max = 2
+RC <- ZQdat
+nhcQ <- read_csv("NHC_2019_metabolism/data/rating_curves/NHC_UNHC_Q.csv", guess_max = 10000) %>%
+  mutate(date = as.Date(with_tz(DateTime_UTC, tz = "EST"))) %>%
+  group_by(date) %>%
+  summarize(nhc_q = mean(discharge_nhc, na.rm = T),
+            unhc_q = mean(discharge_unhc, na.rm = T),
+            deltaQ = max(discharge_nhc, na.rm = T)/min(discharge_nhc, na.rm = T),
+            maxq = max(discharge_nhc, na.rm = T),
+            maxqu = max(discharge_unhc, na.rm = T),
+            good_flow = ifelse(nhc_q <= RC$max_Q[1] &
+                                 unhc_q <= RC$max_Q[2] &
+                                 deltaQ < deltaQ_max, 
+                               TRUE, FALSE))
+
+
+flow_dates <- nhcQ %>%
+  select(date, nhc_q, deltaQ, good_flow) %>%
+  filter(!is.na(good_flow))
+
+write_csv(flow_dates, "NHC_2019_metabolism/data/rating_curves/flow_dates_filter.csv")

@@ -1,12 +1,6 @@
 # Inter site comparison of NHC metabolism
 # comparison to whole SP database
 
-library(dplyr)
-library(tidyverse)
-library(zoo)
-
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_2019_metabolism")
-
 alldat <- readRDS("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/data/streampulse/gapPhilled_data.rds")
 # NHC_model<- readRDS("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/data/streampulse/metabolism/NHC_modeled.rds")$metab
 # NHC_model$year<-(as.numeric(format(NHC_model$date, "%Y")))
