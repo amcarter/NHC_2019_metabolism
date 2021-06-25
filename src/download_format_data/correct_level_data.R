@@ -56,14 +56,15 @@ nhc <- read_csv("NHC_2019_metabolism/data/metabolism/corrected_level/NHC_lvl.csv
   select(DateTime_UTC, level_nhc = level_m)
 
 for(f in 1:nrow(sites)){
-ff  <- filelist[grep(paste0('^', sites$sitecode[f], '_'), filelist)]
-dat <- read_csv(paste0("NHC_2019_metabolism/data/metabolism/raw/",ff), 
-                guess_max = 100000) %>%
-  left_join(NOAA_airpres, by = "DateTime_UTC") 
-if("AirTemp_C" %in% colnames(dat)){ 
-  dat <- select(dat, -AirTemp_C) }
-if("AirPres_kPa" %in% colnames(dat)){ 
-  dat <- select(dat, -AirPres_kPa) }
+  ff  <- filelist[grep(paste0('^', sites$sitecode[f], '_'), filelist)]
+  if(length(ff)>1) ff <- ff[grep('_2020-03-20.csv', ff)]
+  dat <- read_csv(paste0("NHC_2019_metabolism/data/metabolism/raw/",ff), 
+                  guess_max = 100000) %>%
+    left_join(NOAA_airpres, by = "DateTime_UTC") 
+  if("AirTemp_C" %in% colnames(dat)){ 
+    dat <- select(dat, -AirTemp_C) }
+  if("AirPres_kPa" %in% colnames(dat)){ 
+    dat <- select(dat, -AirPres_kPa) }
 
 # Calculate depth from water pressure and add sensor offset 
 # Depth = pressure_Pa = kg/ms2/(density_kg/m3*gravity_m/s2)
@@ -74,22 +75,27 @@ dat <- dat %>%
   select(-pressure_Pa) %>%
   left_join(ysi[ysi$site == dat$site[1],])
   
+# plot_pres(dat)
+  
   if(dat$site[1] == "NHC"){
-    dat$level_m[dat$level_m < 0.42] <- NA
-    dat$waterdepth_m[which(!is.na(dat$waterdepth_m))[41]] <- NA
+    # dat$level_m[dat$level_m < 0.42] <- NA
+    # dat$waterdepth_m[which(!is.na(dat$waterdepth_m))[41]] <- NA
     
     gaps <- rle_custom(is.na(dat$level_m)) 
-    if(gaps$values[1] ==1) { gaps <- gaps[-1,]}
+    if(gaps$values[1] == 1) { gaps <- gaps[-1,]}
     if(gaps$values[nrow(gaps)] == 1) { gaps <- gaps[-nrow(gaps),]}
+    # snap gaps together that are less than 1 day (usually caused by sensor removal)
     tmp <- gaps %>%
       filter(values == 1) %>%
-      slice(c(-9, -36, -78,-79, -84,-85,-90,-94, -98, -102, -107)) %>%
+      # slice(c(-9, -36, -78,-79, -84,-85,-90,-94, -98, -102, -107)) %>%
       mutate(datetime = as.Date(dat$DateTime_UTC[starts]),
              starts = starts - 1,
              stops = stops + 1,
              lvl_start = dat$level_m[starts],
              lvl_stop = dat$level_m[stops],
              jump = lvl_stop - lvl_start) %>%
+      filter(abs(jump) >= 0.01, 
+             lengths < 96) %>%
       arrange(starts) 
     n <- nrow(dat)
     # dat$level_m1 -> dat$level_m
@@ -97,14 +103,16 @@ dat <- dat %>%
     for(i in 1:(nrow(tmp))){
       dat$level_m[tmp$stops[i]:n] <-  dat$level_m[tmp$stops[i]:n] - tmp$jump[i]
     }
+    # plot_pres(dat)
     
+    # snap each chunk of data between gaps of >3 days to the average of the measured points
     tmp <- gaps %>% 
       filter(values == 1, 
              lengths > 300)
     for(i in 1:(nrow(tmp)+1)){
       if(i == 1){ start = 1 } else {start = tmp$stops[i - 1]}
       if(i == (nrow(tmp)+1)){stop = n} else {stop = tmp$starts[i]}
-      delta = mean((dat$level_m[start:stop] - dat$waterdepth_m[start:stop]),
+      delta = mean((na.approx(dat$level_m[start:stop], na.rm = F) - dat$waterdepth_m[start:stop]),
                    na.rm = T)
       if(is.na(delta)) { next }
       dat$level_m[start:stop] <- dat$level_m[start:stop] - delta
@@ -112,8 +120,9 @@ dat <- dat %>%
   }
   if(dat$site[1] == "UNHC"){
     dat <- dat %>%
-      left_join(nhc)
-    dat$waterdepth_m[which(!is.na(dat$waterdepth_m))[c(5, 51, 75)]] <- NA
+      left_join(nhc) %>%
+      mutate(waterdepth_m <- ifelse(waterdepth_m > 0.39, waterdepth_m, NA))
+    # dat$waterdepth_m[which(!is.na(dat$waterdepth_m))[c(5, 51, 75)]] <- NA
     
     dat$level_m[dat$DateTime_UTC == ymd_hms('2017-03-08 16:00:00')] <- NA
     dat$level_m[dat$DateTime_UTC == ymd_hms('2017-04-11 14:45:00')] <- NA
@@ -131,15 +140,17 @@ dat <- dat %>%
     if(gaps$values[nrow(gaps)] == 1) { gaps <- gaps[-nrow(gaps),]}
     tmp <- gaps %>%
       filter(values == 1,
-             lengths <= 300) %>%
-      slice(c(-41, -42, -73)) %>%
+             lengths < 96) %>%
+      # slice(c(-41, -42, -73)) %>%
       mutate(datetime = as.Date(dat$DateTime_UTC[starts]),
              starts = starts - 1,
              stops = stops + 1,
              lvl_start = dat$level_m[starts],
              lvl_stop = dat$level_m[stops],
              jump = lvl_stop - lvl_start) %>%
-      arrange(starts) 
+      filter(abs(jump) >= 0.01) %>%
+      arrange(starts)%>% 
+      slice(-34) 
     n <- nrow(dat)
     # dat$level_m1 -> dat$level_m
     dat$level_m1 <- dat$level_m
@@ -147,21 +158,33 @@ dat <- dat %>%
       dat$level_m[tmp$stops[i]:n] <-  dat$level_m[tmp$stops[i]:n] - tmp$jump[i]
     }
 
-    
-    plot_pres( dat, 'level_m', 'waterdepth_m', 'level_nhc')
-    
-    tmp <- gaps %>%
-      filter(values == 1) %>%
-      slice(c(8, 25, 43, 54, 59)) %>%
-      mutate(datetime = as.Date(dat$DateTime_UTC[starts]))
+    # plot_pres( dat, 'level_m', 'waterdepth_m', 'level_nhc')
+    # snap each chunk of data between gaps of >3 days to the average of the measured points
+    tmp <- gaps %>% 
+      filter(values == 1, 
+             lengths > 100)
+    tmp <- bind_rows(tmp, data.frame(starts = 28014, stops = 28016)) %>%
+      arrange(starts)
     for(i in 1:(nrow(tmp)+1)){
       if(i == 1){ start = 1 } else {start = tmp$stops[i - 1]}
       if(i == (nrow(tmp)+1)){stop = n} else {stop = tmp$starts[i]}
-      delta = mean((dat$level_m[start:stop] - dat$waterdepth_m[start:stop]),
+      delta = mean((na.approx(dat$level_m[start:stop], na.rm = F) - dat$waterdepth_m[start:stop]),
                    na.rm = T)
       if(is.na(delta)) { next }
       dat$level_m[start:stop] <- dat$level_m[start:stop] - delta
-    }
+    }    
+    # tmp <- gaps %>%
+    #   filter(values == 1) %>%
+    #   slice(c(8, 25, 43, 54, 59)) %>%
+    #   mutate(datetime = as.Date(dat$DateTime_UTC[starts]))
+    # for(i in 1:(nrow(tmp)+1)){
+    #   if(i == 1){ start = 1 } else {start = tmp$stops[i - 1]}
+    #   if(i == (nrow(tmp)+1)){stop = n} else {stop = tmp$starts[i]}
+    #   delta = mean((dat$level_m[start:stop] - dat$waterdepth_m[start:stop]),
+    #                na.rm = T)
+    #   if(is.na(delta)) { next }
+    #   dat$level_m[start:stop] <- dat$level_m[start:stop] - delta
+    # }
     dat <- select(dat, -level_nhc)
   }
   if(dat$site[1] == "PM"){
@@ -178,7 +201,8 @@ dat <- dat %>%
     if(gaps$values[1] ==1) { gaps <- gaps[-1,]}
     if(gaps$values[nrow(gaps)] == 1) { gaps <- gaps[-nrow(gaps),]}
     tmp <- gaps %>%
-      filter(values == 1) %>%
+      filter(values == 1,
+             lengths < 96) %>%
       bind_rows(tmp) %>%
       mutate(datetime = as.Date(dat$DateTime_UTC[starts]),
              starts = starts - 1,
@@ -186,7 +210,8 @@ dat <- dat %>%
              lvl_start = dat$level_m[starts],
              lvl_stop = dat$level_m[stops],
              jump = lvl_stop - lvl_start) %>%
-      slice(c(3:8, 11, 12, 15)) %>%
+      # slice(c(3:8, 11, 12, 15)) %>%
+      filter(abs(jump) >= 0.01) %>% 
       arrange(starts) 
     n <- nrow(dat)
     # dat$level_m1 -> dat$level_m
@@ -205,8 +230,20 @@ dat <- dat %>%
     dat$level_m[dat$DateTime_UTC < d] <- dat$level_m[dat$DateTime_UTC < d] +
       nhc_diff$diff[2] - nhc_diff$diff[1]
     
-    dat$level_m <- na.approx(dat$level_m,na.rm = F)
-    dat$level_m <- drift_correct(dat, "level_m", "waterdepth_m")
+    # snap each chunk of data between gaps of >3 days to the average of the measured points
+    tmp <- gaps %>% 
+      filter(values == 1, 
+             lengths > 300)
+    for(i in 1:(nrow(tmp)+1)){
+      if(i == 1){ start = 1 } else {start = tmp$stops[i - 1]}
+      if(i == (nrow(tmp)+1)){stop = n} else {stop = tmp$starts[i]}
+      delta = mean((na.approx(dat$level_m[start:stop], na.rm = F) - dat$waterdepth_m[start:stop]),
+                   na.rm = T)
+      if(is.na(delta)) { next }
+      dat$level_m[start:stop] <- dat$level_m[start:stop] - delta
+    }
+    # dat$level_m <- na.approx(dat$level_m,na.rm = F)
+    # dat$level_m <- drift_correct(dat, "level_m", "waterdepth_m")
     # plot_pres(dat, "level_nhc", "waterdepth_m", "level_m")
     dat <- select(dat, -level_nhc)
   }
@@ -230,8 +267,9 @@ dat <- dat %>%
     if(gaps$values[1] ==1) { gaps <- gaps[-1,]}
     if(gaps$values[nrow(gaps)] == 1) { gaps <- gaps[-nrow(gaps),]}
     tmp <- gaps %>%
-      filter(values == 1) %>%
-      slice(c(1,2,5,7,11:15)) %>%
+      filter(values == 1,
+             lengths < 96) %>%
+      # slice(c(1,2,5,7,11:15)) %>%
       bind_rows(tmp) %>%
       mutate(datetime = as.Date(dat$DateTime_UTC[starts]),
              starts = starts - 1,
@@ -239,6 +277,7 @@ dat <- dat %>%
              lvl_start = dat$level_m[starts],
              lvl_stop = dat$level_m[stops],
              jump = lvl_stop - lvl_start) %>%
+      filter(abs(jump) >= 0.01) %>%
       arrange(starts) 
     n <- nrow(dat)
     # dat$level_m1 -> dat$level_m
@@ -246,19 +285,32 @@ dat <- dat %>%
     for(i in 1:(nrow(tmp))){
       dat$level_m[tmp$stops[i]:n] <-  dat$level_m[tmp$stops[i]:n] - tmp$jump[i]
     }
-    d = ymd_hms("2019-05-10 00:00:00")
-    nhc_diff <- dat %>%
-      filter(DateTime_UTC < d + 60*60*24*28*4) %>%
-      mutate(diff = level_nhc - level_m,
-             before = ifelse(DateTime_UTC > d, FALSE, TRUE)) %>%
-      group_by(before) %>%
-      summarize(diff = median(diff, na.rm = T))
-      
-    dat$level_m[dat$DateTime_UTC < d] <- dat$level_m[dat$DateTime_UTC < d] +
-      nhc_diff$diff[2] - nhc_diff$diff[1]
     
-    dat$level_m <- na.approx(dat$level_m,na.rm = F)
-    dat$level_m <- drift_correct(dat, "level_m", "waterdepth_m")
+    # snap each chunk of data between gaps of >3 days to the average of the measured points
+    tmp <- gaps %>% 
+      filter(values == 1, 
+             lengths > 300)
+    for(i in 1:(nrow(tmp)+1)){
+      if(i == 1){ start = 1 } else {start = tmp$stops[i - 1]}
+      if(i == (nrow(tmp)+1)){stop = n} else {stop = tmp$starts[i]}
+      delta = mean((na.approx(dat$level_m[start:stop], na.rm = F) - dat$waterdepth_m[start:stop]),
+                   na.rm = T)
+      if(is.na(delta)) { next }
+      dat$level_m[start:stop] <- dat$level_m[start:stop] - delta
+    }
+    # d = ymd_hms("2019-05-10 00:00:00")
+    # nhc_diff <- dat %>%
+    #   filter(DateTime_UTC < d + 60*60*24*28*4) %>%
+    #   mutate(diff = level_nhc - level_m,
+    #          before = ifelse(DateTime_UTC > d, FALSE, TRUE)) %>%
+    #   group_by(before) %>%
+    #   summarize(diff = median(diff, na.rm = T))
+    #   
+    # dat$level_m[dat$DateTime_UTC < d] <- dat$level_m[dat$DateTime_UTC < d] +
+    #   nhc_diff$diff[2] - nhc_diff$diff[1]
+    # 
+    # dat$level_m <- na.approx(dat$level_m,na.rm = F)
+    # dat$level_m <- drift_correct(dat, "level_m", "waterdepth_m")
     # plot_pres(dat, "level_m1", "waterdepth_m", "level_d")
     dat <- select(dat, -level_nhc)
   }
@@ -276,8 +328,9 @@ dat <- dat %>%
     if(gaps$values[1] ==1) { gaps <- gaps[-1,]}
     if(gaps$values[nrow(gaps)] == 1) { gaps <- gaps[-nrow(gaps),]}
     tmp <- gaps %>%
-      filter(values == 1) %>%
-      slice(c(2,5:9,13, 14)) %>%
+      filter(values == 1,
+             lengths < 96) %>%
+      # slice(c(2,5:9,13, 14)) %>%
       bind_rows(tmp) %>%
       mutate(datetime = as.Date(dat$DateTime_UTC[starts]),
              starts = starts - 1,
@@ -285,6 +338,7 @@ dat <- dat %>%
              lvl_start = dat$level_m[starts],
              lvl_stop = dat$level_m[stops],
              jump = lvl_stop - lvl_start) %>%
+      filter(abs(jump) >=0.01) %>%
       arrange(starts) 
     n <- nrow(dat)
     # dat$level_m1 -> dat$level_m
@@ -293,9 +347,20 @@ dat <- dat %>%
       dat$level_m[tmp$stops[i]:n] <-  dat$level_m[tmp$stops[i]:n] - tmp$jump[i]
     }
     
-    
-    dat$level_m <- na.approx(dat$level_m,na.rm = F)
-    dat$level_m <- drift_correct(dat, "level_m", "waterdepth_m")
+    # snap each chunk of data between gaps of >3 days to the average of the measured points
+    tmp <- gaps %>% 
+      filter(values == 1, 
+             lengths > 300)
+    for(i in 1:(nrow(tmp)+1)){
+      if(i == 1){ start = 1 } else {start = tmp$stops[i - 1]}
+      if(i == (nrow(tmp)+1)){stop = n} else {stop = tmp$starts[i]}
+      delta = mean((na.approx(dat$level_m[start:stop], na.rm = F) - dat$waterdepth_m[start:stop]),
+                   na.rm = T)
+      if(is.na(delta)) { next }
+      dat$level_m[start:stop] <- dat$level_m[start:stop] - delta
+    }
+    # dat$level_m <- na.approx(dat$level_m,na.rm = F)
+    # dat$level_m <- drift_correct(dat, "level_m", "waterdepth_m")
     # plot_pres(dat, "level_nhc", "waterdepth_m", "level_d")
     d = ymd_hms("2019-05-19 00:00:00")
     nhc_diff <- dat %>%
@@ -312,8 +377,8 @@ dat <- dat %>%
   if(dat$site[1] == "WBP"){
     dat <- dat %>%
       left_join(nhc)
-    # plot_pres(dat, "level_m", "waterdepth_m", "level_nhc")
     dat$level_m[dat$level_m < 0.66] <- NA
+    # plot_pres(dat, "level_m", "waterdepth_m", "level_nhc")
     tmp <- data.frame(starts = c(which(dat$DateTime_UTC ==
                                          ymd_hms("2019-05-10 16:30:00")),
                                  which(dat$DateTime_UTC ==
@@ -321,21 +386,22 @@ dat <- dat %>%
                                  which(dat$DateTime_UTC ==
                                          ymd_hms("2019-12-12 19:15:00"))
     ))
-    tmp$stops <- tmp$starts +1
-    
+    dat$level_m[tmp$starts] <- NA
+
     gaps <- rle_custom(is.na(dat$level_m)) 
     if(gaps$values[1] ==1) { gaps <- gaps[-1,]}
     if(gaps$values[nrow(gaps)] == 1) { gaps <- gaps[-nrow(gaps),]}
     tmp <- gaps %>%
-      filter(values == 1) %>%
-      slice(15) %>%
-      bind_rows(tmp) %>%
+      filter(values == 1,
+             lengths < 96) %>%
+      # slice(15) %>%
       mutate(datetime = as.Date(dat$DateTime_UTC[starts]),
              starts = starts - 1,
              stops = stops + 1,
              lvl_start = dat$level_m[starts],
              lvl_stop = dat$level_m[stops],
              jump = lvl_stop - lvl_start) %>%
+      filter(abs(jump) >= 0.01) %>%
       arrange(starts) 
     n <- nrow(dat)
     # dat$level_m1 -> dat$level_m
@@ -345,23 +411,35 @@ dat <- dat %>%
     }
     
     # plot_pres(dat, "level_nhc", "waterdepth_m", "level_d")
-    d = ymd_hms("2019-05-08 00:00:00")
-    d1 = ymd_hms("2020-06-18 00:00:00")
-    nhc_diff <- dat %>%
-      filter(DateTime_UTC < d + 60*60*24*30*2 | DateTime_UTC > d1) %>%
-      mutate(diff = level_nhc - level_m,
-             before = case_when(DateTime_UTC < d ~ 1,
-                                DateTime_UTC > d1 ~ 3,
-                                TRUE ~ 2)) %>%
-      group_by(before) %>%
-      summarize(diff = median(diff, na.rm = T))
-      
-    dat$level_m[dat$DateTime_UTC < d] <- dat$level_m[dat$DateTime_UTC < d] +
-      nhc_diff$diff[1] - nhc_diff$diff[2]
-    dat$level_m[dat$DateTime_UTC > d1] <- dat$level_m[dat$DateTime_UTC > d1] +
-      nhc_diff$diff[3] - nhc_diff$diff[2]
-    dat$level_m <- na.approx(dat$level_m,na.rm = F)
-    dat$level_m <- drift_correct(dat, "level_m", "waterdepth_m")
+    # snap each chunk of data between gaps of >3 days to the average of the measured points
+    tmp <- gaps %>% 
+      filter(values == 1, 
+             lengths > 100)
+    for(i in 1:(nrow(tmp)+1)){
+      if(i == 1){ start = 1 } else {start = tmp$stops[i - 1]}
+      if(i == (nrow(tmp)+1)){stop = n} else {stop = tmp$starts[i]}
+      delta = mean((na.approx(dat$level_m[start:stop], na.rm = F) - dat$waterdepth_m[start:stop]),
+                   na.rm = T)
+      if(is.na(delta)) { next }
+      dat$level_m[start:stop] <- dat$level_m[start:stop] - delta
+    }
+    # d = ymd_hms("2019-05-08 00:00:00")
+    # d1 = ymd_hms("2020-06-18 00:00:00")
+    # nhc_diff <- dat %>%
+    #   filter(DateTime_UTC < d + 60*60*24*30*2 | DateTime_UTC > d1) %>%
+    #   mutate(diff = level_nhc - level_m,
+    #          before = case_when(DateTime_UTC < d ~ 1,
+    #                             DateTime_UTC > d1 ~ 3,
+    #                             TRUE ~ 2)) %>%
+    #   group_by(before) %>%
+    #   summarize(diff = median(diff, na.rm = T))
+    #   
+    # dat$level_m[dat$DateTime_UTC < d] <- dat$level_m[dat$DateTime_UTC < d] +
+    #   nhc_diff$diff[1] - nhc_diff$diff[2]
+    # dat$level_m[dat$DateTime_UTC > d1] <- dat$level_m[dat$DateTime_UTC > d1] +
+    #   nhc_diff$diff[3] - nhc_diff$diff[2]
+    # dat$level_m <- na.approx(dat$level_m,na.rm = F)
+    # dat$level_m <- drift_correct(dat, "level_m", "waterdepth_m")
     dat <- select(dat, -level_nhc)
   }
   if(dat$site[1] == "PWC"){
