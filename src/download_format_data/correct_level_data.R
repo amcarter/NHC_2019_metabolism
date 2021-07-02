@@ -52,8 +52,6 @@ ysi <- read_csv("NHC_2019_metabolism/data/water_chemistry/all_nhc_ysi_data.csv")
 
 # load data files
 filelist <- list.files("NHC_2019_metabolism/data/metabolism/raw")
-nhc <- read_csv("NHC_2019_metabolism/data/metabolism/corrected_level/NHC_lvl.csv") %>%
-  select(DateTime_UTC, level_nhc = level_m)
 
 for(f in 1:nrow(sites)){
   ff  <- filelist[grep(paste0('^', sites$sitecode[f], '_'), filelist)]
@@ -75,7 +73,7 @@ dat <- dat %>%
   select(-pressure_Pa) %>%
   left_join(ysi[ysi$site == dat$site[1],])
   
-# plot_pres(dat)
+plot_pres(dat)
   
   if(dat$site[1] == "NHC"){
     # dat$level_m[dat$level_m < 0.42] <- NA
@@ -103,7 +101,7 @@ dat <- dat %>%
     for(i in 1:(nrow(tmp))){
       dat$level_m[tmp$stops[i]:n] <-  dat$level_m[tmp$stops[i]:n] - tmp$jump[i]
     }
-    # plot_pres(dat)
+    plot_pres(dat)
     
     # snap each chunk of data between gaps of >3 days to the average of the measured points
     tmp <- gaps %>% 
@@ -118,6 +116,8 @@ dat <- dat %>%
       dat$level_m[start:stop] <- dat$level_m[start:stop] - delta
     }
   }
+  nhc <- read_csv("NHC_2019_metabolism/data/metabolism/corrected_level/NHC_lvl.csv") %>%
+    select(DateTime_UTC, level_nhc = level_m)
   if(dat$site[1] == "UNHC"){
     dat <- dat %>%
       left_join(nhc) %>%
@@ -190,7 +190,7 @@ dat <- dat %>%
   if(dat$site[1] == "PM"){
     dat <- dat %>%
       left_join(nhc)
-    plot_pres(dat, "level_m", "waterdepth_m", "level_nhc")
+    # plot_pres(dat, "level_m", "waterdepth_m", "level_nhc")
     dat$level_m[dat$level_m < 0.57] <- NA
     tmp <- data.frame(starts = c(which(dat$DateTime_UTC ==
                                          ymd_hms("2020-02-12 14:00:00"))
@@ -285,6 +285,7 @@ dat <- dat %>%
     for(i in 1:(nrow(tmp))){
       dat$level_m[tmp$stops[i]:n] <-  dat$level_m[tmp$stops[i]:n] - tmp$jump[i]
     }
+    # plot_pres(dat, "level_m", "waterdepth_m", "level_nhc")
     
     # snap each chunk of data between gaps of >3 days to the average of the measured points
     tmp <- gaps %>% 
@@ -346,6 +347,7 @@ dat <- dat %>%
     for(i in 1:(nrow(tmp))){
       dat$level_m[tmp$stops[i]:n] <-  dat$level_m[tmp$stops[i]:n] - tmp$jump[i]
     }
+    # plot_pres(dat, "level_m", "waterdepth_m", "level_nhc")
     
     # snap each chunk of data between gaps of >3 days to the average of the measured points
     tmp <- gaps %>% 
@@ -364,7 +366,7 @@ dat <- dat %>%
     # plot_pres(dat, "level_nhc", "waterdepth_m", "level_d")
     d = ymd_hms("2019-05-19 00:00:00")
     nhc_diff <- dat %>%
-      filter(DateTime_UTC < d + 60*60*24*25*4) %>%
+      # filter(DateTime_UTC < d + 60*60*24*25*4) %>%
       mutate(diff = level_nhc - level_m,
              before = ifelse(DateTime_UTC > d, FALSE, TRUE)) %>%
       group_by(before) %>%
@@ -410,7 +412,7 @@ dat <- dat %>%
       dat$level_m[tmp$stops[i]:n] <-  dat$level_m[tmp$stops[i]:n] - tmp$jump[i]
     }
     
-    # plot_pres(dat, "level_nhc", "waterdepth_m", "level_d")
+    # plot_pres(dat, "level_nhc", "waterdepth_m", "level_m")
     # snap each chunk of data between gaps of >3 days to the average of the measured points
     tmp <- gaps %>% 
       filter(values == 1, 
@@ -445,7 +447,7 @@ dat <- dat %>%
   if(dat$site[1] == "PWC"){
     dat <- dat %>%
       left_join(nhc)
-    # # plot_pres(dat, "level_m", "waterdepth_m", "level_nhc")
+    plot_pres(dat, "level_m", "waterdepth_m", "level_nhc")
     dat$level_m[dat$level_m < 0.69] <- NA
     tmp <- data.frame(starts = c(which(dat$DateTime_UTC ==
                                          ymd_hms("2019-05-30 21:00:00")),
@@ -475,10 +477,12 @@ dat <- dat %>%
       dat$level_m[tmp$stops[i]:n] <-  dat$level_m[tmp$stops[i]:n] - tmp$jump[i]
     }
     
-    # plot_pres(dat, "level_nhc", "waterdepth_m", "level_d")
+    plot_pres(dat, "level_nhc", "waterdepth_m", "level_m")
     
-    dat$level_m <- na.approx(dat$level_m,na.rm = F)
-    dat$level_m <- drift_correct(dat, "level_m", "waterdepth_m")
+    delta = mean((na.approx(dat$level_m, na.rm = F) - dat$waterdepth_m),
+                 na.rm = T)
+    dat$level_m <- dat$level_m - delta
+    
     dat <- select(dat, -level_nhc)
   }
 
@@ -490,7 +494,8 @@ dat <- dat %>%
            site = dat$site[1]) %>%
     select(-level_m1, -WaterPres_kPa, -waterdepth_m, -notes) %>%
     group_by(DateTime_UTC, site) %>%
-    summarize_all(mean, na.rm = T)
+    summarize_all(mean, na.rm = T) %>%
+    ungroup()
 
 write_csv(dat, paste0("NHC_2019_metabolism/data/metabolism/corrected_level/", 
                       dat$site[1], "_lvl.csv"))
