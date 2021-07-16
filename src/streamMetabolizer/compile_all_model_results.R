@@ -278,7 +278,7 @@ vv <- ggplot(annual_summary, aes(scale, cv, fill = met)) +
 
 png('figures/comparison_cumulativemet_withinyearCV_across_scales.png', 
     width = 7, height = 5, res = 300, units = 'in')
-ggarrange(cc, vv, common.legend = T, ncol = 1)
+ggpubr::ggarrange(cc, vv, common.legend = T, ncol = 1)
 dev.off()
 
 write_csv(annual_summary,

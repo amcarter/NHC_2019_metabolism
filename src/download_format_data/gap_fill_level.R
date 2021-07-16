@@ -12,7 +12,7 @@
 #     dyRangeSelector()
 #     
 #   }
-# }
+# } 
 
 # read in corrected level data:
 lvl_long <- read_csv("NHC_2019_metabolism/data/rating_curves/all_sites_level_corrected.csv") %>%
@@ -30,6 +30,7 @@ lvl <- lvl_long %>%
 
 lvl_s <- lvl
 n <- nrow(lvl)
+# create 2 hour offset between UNHC and NHC sensors
 lvl_s$UNHC <- c( rep(NA_real_, 8),lvl_s$UNHC[1:(n-8)])
 
 mnhc <- lm(NHC ~ UNHC, data = lvl_s)
@@ -151,7 +152,8 @@ lvl_long<- lvl_long %>%
   bind_rows(qm_l)
 write_csv(lvl_long, "NHC_2019_metabolism/data/rating_curves/all_sites_level_corrected.csv")
 
-nhc <- read_csv("NHC_2019_metabolism/data/metabolism/corrected_level/NHC_lvl.csv") %>%
+nhc <- read_csv("NHC_2019_metabolism/data/metabolism/corrected_level/NHC_lvl.csv", 
+                guess_max = 10000) %>%
   select(-level_m)
 nhc <- qm %>%
   select(DateTime_UTC, level_m = nhc_mod) %>%
@@ -159,7 +161,8 @@ nhc <- qm %>%
   arrange(DateTime_UTC)
 write_csv(nhc, "NHC_2019_metabolism/data/metabolism/corrected_level/NHC_lvl.csv")
 
-unhc <- read_csv("NHC_2019_metabolism/data/metabolism/corrected_level/UNHC_lvl.csv") %>%
+unhc <- read_csv("NHC_2019_metabolism/data/metabolism/corrected_level/UNHC_lvl.csv",
+                 guess_max = 10000) %>%
   select(-level_m)
 unhc <- qm %>%
   select(DateTime_UTC, level_m = unhc_mod) %>%

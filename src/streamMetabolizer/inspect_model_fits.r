@@ -243,7 +243,7 @@ plot_hall_metab <- function(met, ylim = NULL,
     break
   }
   
-  hall <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_table_15.csv") %>%
+  hall <- read_csv("C:/Users/Alice Carter/git/nhc_50yl/hall_50yl/code/data/hall/hall_table_15.csv") %>%
     rename(hall_site = site) %>%
     mutate(ER_gO2m2d = -ER_gO2m2d) %>%
     left_join(ss) %>%
@@ -287,7 +287,7 @@ K600toO2<-function(temp, K600) {
   }
 
 plot_k <- function(preds, xlim = NULL){
-  hall <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_tableA2_k_morphology_extended.csv") 
+  hall <- read_csv("C:/Users/Alice Carter/git/nhc_50yl/hall_50yl/code/data/hall/hall_tableA2_k_morphology_extended.csv") 
   k = preds$K600
   if(is.null(xlim)){
     xlim <- range(c(k, hall$K600), na.rm = T)
@@ -329,7 +329,7 @@ plot_kde_hall_metab <- function(met, lim = NULL,
     break
   }
   
-  hall <- read_csv("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl/data/hall/hall_table_15.csv") %>%
+  hall <- read_csv("C:/Users/Alice Carter/git/nhc_50yl/hall_50yl/code/data/hall/hall_table_15.csv") %>%
     rename(hall_site = site) %>%
     mutate(ER_gO2m2d = -ER_gO2m2d) %>%
     left_join(ss) %>%

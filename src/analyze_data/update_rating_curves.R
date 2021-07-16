@@ -149,7 +149,7 @@ source("NHC_2019_metabolism/src/analyze_data/calc_discharge_from_crosssection.r"
 
 qql <- read_csv("NHC_2019_metabolism/data/rating_curves/calculated_discharge_with_levels.csv")
 levels <- read_csv("NHC_2019_metabolism/data/rating_curves/all_sites_level_corrected.csv",
-                   guess_max = 100000) #%>%
+                   guess_max = 1000000) #%>%
   # mutate(level_m = case_when(site == "UNHC" ~ level_m - m_diff,
   #                            TRUE ~ level_m))
 # write_csv(levels, "NHC_2019_metabolism/data/rating_curves/all_sites_level_corrected.csv")
@@ -160,10 +160,11 @@ levels <- read_csv("NHC_2019_metabolism/data/rating_curves/all_sites_level_corre
 # write_csv(unhc, "NHC_2019_metabolism/data/metabolism/corrected_level/UNHC_lvl.csv")
 
 levels <- levels %>%  
+  filter(site %in% c('NHC', 'UNHC')) %>%
   pivot_wider(names_from = "site", values_from = "level_m") %>%
-  select(DateTime_UTC, NHC, UNHC, notes) %>%
   mutate(DateTime_EST = with_tz(DateTime_UTC, tz = "EST")) %>%
   arrange(DateTime_EST) 
+
 # levels %>%
 #   select(-DateTime_EST) %>%
 #   xts(order.by = levels$DateTime_EST) %>%
@@ -297,11 +298,16 @@ w <- which(!is.na(newQdat$NHC.Q))
 newQdat <- newQdat[w[1]:w[length(w)],]
 for(i in which(!is.na(newQdat$NHC.Q))){
   if(is.na(newQdat$UNHC.Q[i])){ next }
-  df <- data.frame(Q = c(newQdat$NHC.Q[i], NA, NA, NA, NA, NA,
+    df <- data.frame(Q = c(newQdat$NHC.Q[i], NA, NA, NA, NA, NA,
                          newQdat$UNHC.Q[i]), 
-                   area = c(sites$ws_area.km2[1:7])) %>%
-    mutate(Q = na.approx(Q, x = area))
-  
+                   area = c(sites$ws_area.km2[1:7]),
+                   distance = c(sites$distance_m[1:7])) 
+  if(newQdat$UNHC.Q[i] <= newQdat$NHC.Q[i]){
+    df <- df %>% mutate(Q = na.approx(Q, x = area))
+  } else {
+    df <- df %>% mutate(Q = na.approx(Q, x = distance))
+  }
+
   newQdat[i, 2:8] <- df$Q
   if(i %% 5000 == 0) { print(i/nrow(newQdat))}
 }

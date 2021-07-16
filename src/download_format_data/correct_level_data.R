@@ -73,7 +73,7 @@ dat <- dat %>%
   select(-pressure_Pa) %>%
   left_join(ysi[ysi$site == dat$site[1],])
   
-plot_pres(dat)
+# plot_pres(dat)
   
   if(dat$site[1] == "NHC"){
     # dat$level_m[dat$level_m < 0.42] <- NA
@@ -121,7 +121,7 @@ plot_pres(dat)
   if(dat$site[1] == "UNHC"){
     dat <- dat %>%
       left_join(nhc) %>%
-      mutate(waterdepth_m <- ifelse(waterdepth_m > 0.39, waterdepth_m, NA))
+      mutate(waterdepth_m = ifelse(waterdepth_m > 0.39, waterdepth_m, NA))
     # dat$waterdepth_m[which(!is.na(dat$waterdepth_m))[c(5, 51, 75)]] <- NA
     
     dat$level_m[dat$DateTime_UTC == ymd_hms('2017-03-08 16:00:00')] <- NA
@@ -507,7 +507,7 @@ filelist <- list.files("NHC_2019_metabolism/data/metabolism/corrected_level/")
 dd <- data.frame()
 for(f in 1:length(filelist)){
   d <- read_csv(paste0("NHC_2019_metabolism/data/metabolism/corrected_level/", 
-                       filelist[f])) %>% 
+                       filelist[f]), guess_max = 10000) %>% 
   select(DateTime_UTC, level_m, site)
   dd <- bind_rows(dd, d)
 }

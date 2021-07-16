@@ -15,7 +15,7 @@ library(LakeMetabolizer)
 # 1. load raw data files and metadata ####
 # sites <- read_csv("siteData/NHCsite_metadata.csv")
 ll <- read_csv("NHC_2019_metabolism/data/rating_curves/all_sites_level_corrected.csv", 
-               guess_max = 100000) %>%
+               guess_max = 1000000) %>%
   pivot_wider(names_from = site,  values_from = level_m)%>%
   arrange(DateTime_UTC)
 Qdat <- read_csv("NHC_2019_metabolism/data/rating_curves/interpolatedQ_allsites.csv", 

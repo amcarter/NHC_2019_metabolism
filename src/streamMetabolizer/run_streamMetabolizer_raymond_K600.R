@@ -15,11 +15,11 @@ library(dygraphs)
 # library(imputeTS)
 # library(parallel)
 
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/hall_50yl2/NHC_2019_metabolism/data")
+setwd("C:/Users/Alice Carter/git/nhc_50yl/NHC_2019_metabolism/data")
 # setwd("~Desktop/donkey")
 ## Read in Data ####
 sites <- read_csv("siteData/NHCsite_metadata.csv") %>%
-  slice(1:7)
+  slice(1:5,7)
 
 # select variables for metabolism
 read_metdata <- function(site){
@@ -33,7 +33,7 @@ PM <- read_metdata("PM")
 CBP <- read_metdata("CBP")
 WB <- read_metdata("WB")
 WBP <- read_metdata("WBP")
-PWC <- read_metdata("PWC")
+# PWC <- read_metdata("PWC")
 UNHC <- read_metdata("UNHC")
 
 
