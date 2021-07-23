@@ -357,8 +357,8 @@ plot_kde_hall_metab <- function(met, lim = NULL,
                alpha("darkred", .75)))
   abline(0,-1)
   legend("topright", cex = 1.4,
-         c(paste0("Today  n = ",nrow(na.omit(met))),
-           paste0("Hall  n = ", nrow(na.omit(hall)))),
+         c(paste0("2019  n = ",nrow(na.omit(met))),
+           paste0("1969  n = ", nrow(na.omit(hall)))),
          fill = c(alpha("grey25", .75), alpha("darkred", .75)), 
          border = NA, bty = "n")
    

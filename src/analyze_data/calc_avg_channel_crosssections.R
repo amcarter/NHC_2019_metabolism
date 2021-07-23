@@ -214,7 +214,7 @@ qall <- sites %>%
          distance_m) %>%
   mutate(oct9 = c(q$discharge_nhc[4], rep(NA, 5), q$discharge_unhc[4]),
          mar7 = c(q$discharge_nhc[3], rep(NA, 5), q$discharge_unhc[3])) %>%
-  mutate(oct9 = na.approx(oct9, x = wsarea),
+  mutate(oct9 = na.approx(oct9, x = distance_m), # losing discharge interpolate with distance
          mar7 = na.approx(mar7, x = wsarea))
 
 
@@ -260,7 +260,7 @@ for(s in c("nhc","unhc")){
 # 
 # png("../figures/nhc_crossection_relationships.png", 
 #     width = 7, height = 6, res = 300, units = "in")
-#   ggarrange(a,b,c,d)
+  # ggpubr::ggarrange(a,b,c,d)
 # dev.off()
 
 # save file with reach characterization calculations
@@ -377,7 +377,8 @@ colnames(ochars) <- c("site", "avg_depth","avg_xcarea",
 ochars$date <- as.Date("2019-10-09")
 specs <- bind_rows(specs[1:2,], mchars, ochars) %>%
   select(-DateTime_EST)
-
+# Assign depth at CBP at spring discharge to be 0.45, which is what Hall measured:
+# specs$avg_depth[3] <- 0.45
 
 # Calculate Depth by Q relationships ####
 DQ <- data.frame(sitename = c("NHC","PM","CBP","WB","WBP","PWC","UNHC"),
